@@ -65,19 +65,19 @@ impl QueryParser {
 
         match self.parse_select(&mut peekable_query) {
             Ok(sf) => { query_statement.select_fields = sf },
-            Err(error) => return Err(error)
+            Err(error) => return Err(format!("Error: {}, Query: {:?}", error, peekable_query))
         };
 
         match self.parse_from(&mut peekable_query) {
             Ok(ft) => { query_statement.from_tables = ft },
-            Err(error) => return Err(error)
+            Err(error) => return Err(format!("Error: {}, Query: {:?}", error, peekable_query))
         };
 
         if let Some(peeked_char) = peekable_query.peek() {
             if *peeked_char == 'w' || *peeked_char == 'W' {
                 match self.parse_where(&mut peekable_query) {
                     Ok(we) => { query_statement.where_expression = we },
-                    Err(error) => return Err(error)
+                    Err(error) => return Err(format!("Error: {}, Query: {:?}", error, peekable_query))
                 };
             }
         }
@@ -86,7 +86,7 @@ impl QueryParser {
             if *peeked_char == 'o' || *peeked_char == 'O' {
                 match self.parse_order_by(&mut peekable_query) {
                     Ok(ob) => { query_statement.order_by_fields = ob },
-                    Err(error) => return Err(error)
+                    Err(error) => return Err(format!("Error: {}, Query: {:?}", error, peekable_query))
                 };
             }
         }
@@ -138,127 +138,12 @@ impl QueryParser {
         self.parse_whitespaces(peekable_query);
         let mut from_expresion: Vec<FromExpressionElement> = Vec::new();
 
-        match self.parse_from_expression(peekable_query, &mut from_expresion) {
+        match self.parse_expression(peekable_query, &mut from_expresion) {
             Ok(()) => {}
             Err(error) => return Err(error)
         }
 
         Ok(from_expresion)
-    }
-
-    fn parse_from_expression(&self, peekable_query: &mut Peekable<Chars>, from_expresion: &mut Vec<FromExpressionElement>) -> Result<(), String> {
-        if let Some(peeked_char) = peekable_query.peek() {
-            if *peeked_char == '(' {
-                match self.parse_from_bracket_expression(peekable_query, from_expresion) {
-                    Ok(()) => {}
-                    Err(error) => return Err(error)
-                }
-            } else if *peeked_char == '#' {
-                match self.parse_from_tag_expression(peekable_query, from_expresion) {
-                    Ok(()) => {}
-                    Err(error) => return Err(error)
-                }
-            } else {
-                return Err(format!("Expected '#' or a '(', but found: {}", *peeked_char));
-            }
-        }
-        self.parse_whitespaces(peekable_query);
-
-        Ok(())
-    }
-
-    fn parse_from_bracket_expression(&self, peekable_query: &mut Peekable<Chars>, from_expresion: &mut Vec<FromExpressionElement>) -> Result<(), String> {
-        if let Some(peeked_char) = peekable_query.peek() {
-            if *peeked_char != '(' {
-                return Err(format!("Expected a '(', but found: {}", *peeked_char));
-            }
-        }
-        from_expresion.push(FromExpressionElement::OpenedBracket);
-        peekable_query.next();
-        self.parse_whitespaces(peekable_query);
-
-        match self.parse_from_expression(peekable_query, from_expresion) {
-            Ok(()) => {}
-            Err(error) => return Err(error)
-        }
-
-        if let Some(peeked_char) = peekable_query.peek() {
-            if *peeked_char != ')' {
-                return Err(format!("Expected a ')', but found: {}", *peeked_char));
-            }
-        } else {
-            return Err("Expected a ')', but found nothing".to_string());
-        }
-        from_expresion.push(FromExpressionElement::ClosedBracket);
-        peekable_query.next();
-        self.parse_whitespaces(peekable_query);
-
-        if let Some(peeked_char) = peekable_query.peek() {
-            if *peeked_char == 'a' || *peeked_char == 'A' {
-                match self.parse_keyword(peekable_query, "AND", false) {
-                    Ok(()) => { from_expresion.push(FromExpressionElement::OperatorAnd) }
-                    Err(error) => return Err(error)
-                }
-            } else if *peeked_char == 'o' || *peeked_char == 'O' {
-                match self.parse_keyword(peekable_query, "OR", false) {
-                    Ok(()) => { from_expresion.push(FromExpressionElement::OperatorOr) }
-                    Err(error) => return Err(error)
-                }
-            } else {
-                return Ok(())
-            }
-        } else {
-            return Ok(());
-        }
-        self.parse_whitespaces(peekable_query);
-
-        match self.parse_from_expression(peekable_query, from_expresion) {
-            Ok(()) => {}
-            Err(error) => return Err(error)
-        }
-
-        Ok(())
-    }
-
-    fn parse_from_tag_expression(&self, peekable_query: &mut Peekable<Chars>, from_expresion: &mut Vec<FromExpressionElement>) -> Result<(), String> {
-        if let Some(peeked_char) = peekable_query.peek() {
-            if *peeked_char != '#' {
-                return Err(format!("Expected a '#', but found: {}", *peeked_char));
-            }
-        }
-        peekable_query.next();
-
-        match self.parse_string_value(peekable_query) {
-            Ok(sv) => { from_expresion.push(FromExpressionElement::Tag(sv)) }
-            Err(error) => return Err(error)
-        }
-        self.parse_whitespaces(peekable_query);
-
-        loop {
-            if let Some(peeked_char) = peekable_query.peek() {
-                if *peeked_char == 'a' || *peeked_char == 'A' {
-                    match self.parse_keyword(peekable_query, "AND", false) {
-                        Ok(()) => { from_expresion.push(FromExpressionElement::OperatorAnd) }
-                        Err(error) => return Err(error)
-                    }
-                } else if *peeked_char == 'o' || *peeked_char == 'O' {
-                    match self.parse_keyword(peekable_query, "OR", false) {
-                        Ok(()) => { from_expresion.push(FromExpressionElement::OperatorOr) }
-                        Err(error) => return Err(error)
-                    }
-                } else {
-                    return Ok(())
-                }
-            } else {
-                return Ok(());
-            }
-            self.parse_whitespaces(peekable_query);
-
-            match self.parse_from_expression(peekable_query, from_expresion) {
-                Ok(()) => {}
-                Err(error) => return Err(error)
-            }
-        }
     }
 
     // call only when you expect WHERE should happen
@@ -292,6 +177,114 @@ impl QueryParser {
 
     fn parse_field_value(&self, peekable_query: &mut Peekable<Chars>) -> Result<FieldValue, String> {
         Ok(FieldValue::String("test".to_string()))
+    }
+
+    fn parse_expression(&self, peekable_query: &mut Peekable<Chars>, from_expresion: &mut Vec<FromExpressionElement>) -> Result<(), String> {
+        if let Some(peeked_char) = peekable_query.peek() {
+            if *peeked_char == '(' {
+                match self.parse_bracket_expression(peekable_query, from_expresion) {
+                    Ok(()) => {}
+                    Err(error) => return Err(error)
+                }
+            } else {
+                match self.parse_no_bracket_expression(peekable_query, from_expresion) {
+                    Ok(()) => {}
+                    Err(error) => return Err(error)
+                }
+            }
+        } else {
+            return Err("Expected expression, but found nothing".to_string());
+        }
+        self.parse_whitespaces(peekable_query);
+
+        Ok(())
+    }
+
+    fn parse_bracket_expression(&self, peekable_query: &mut Peekable<Chars>, from_expresion: &mut Vec<FromExpressionElement>) -> Result<(), String> {
+        if let Some(peeked_char) = peekable_query.peek() {
+            if *peeked_char != '(' {
+                return Err(format!("Expected a '(', but found: {}", *peeked_char));
+            }
+        }
+        from_expresion.push(FromExpressionElement::OpenedBracket);
+        peekable_query.next();
+        self.parse_whitespaces(peekable_query);
+
+        match self.parse_expression(peekable_query, from_expresion) {
+            Ok(()) => {}
+            Err(error) => return Err(error)
+        }
+
+        if let Some(peeked_char) = peekable_query.peek() {
+            if *peeked_char != ')' {
+                return Err(format!("Expected a ')', but found: {}", *peeked_char));
+            }
+        } else {
+            return Err("Expected a ')', but found nothing".to_string());
+        }
+        from_expresion.push(FromExpressionElement::ClosedBracket);
+        peekable_query.next();
+        self.parse_whitespaces(peekable_query);
+
+        match self.parse_operator(peekable_query) {
+            Ok(op) => { from_expresion.push(op) }
+            Err(_) => return Ok(())
+        }
+        self.parse_whitespaces(peekable_query);
+
+        self.parse_expression(peekable_query, from_expresion)
+    }
+
+    fn parse_no_bracket_expression(&self, peekable_query: &mut Peekable<Chars>, from_expresion: &mut Vec<FromExpressionElement>) -> Result<(), String> {
+        match self.parse_tag(peekable_query) {
+            Ok(sv) => { from_expresion.push(FromExpressionElement::Tag(sv)) }
+            Err(error) => return Err(error)
+        }
+        self.parse_whitespaces(peekable_query);
+
+        loop {
+            match self.parse_operator(peekable_query) {
+                Ok(op) => { from_expresion.push(op) }
+                Err(_) => return Ok(())
+            }
+            self.parse_whitespaces(peekable_query);
+
+            match self.parse_expression(peekable_query, from_expresion) {
+                Ok(()) => {}
+                Err(error) => return Err(error)
+            }
+        }
+    }
+
+    fn parse_operator(&self, peekable_query: &mut Peekable<Chars>) -> Result<FromExpressionElement, String> {
+        if let Some(peeked_char) = peekable_query.peek() {
+            if *peeked_char == 'a' || *peeked_char == 'A' {
+                match self.parse_keyword(peekable_query, "AND", false) {
+                    Ok(()) => { return Ok(FromExpressionElement::OperatorAnd); }
+                    Err(error) => return Err(error)
+                }
+            } else if *peeked_char == 'o' || *peeked_char == 'O' {
+                match self.parse_keyword(peekable_query, "OR", false) {
+                    Ok(()) => { return Ok(FromExpressionElement::OperatorOr); }
+                    Err(error) => return Err(error)
+                }
+            } else {
+                return Err("No operator".to_string());
+            }
+        } else {
+            return Err("No operator".to_string());
+        }
+    }
+
+    fn parse_tag(&self, peekable_query: &mut Peekable<Chars>) -> Result<String, String> {
+        if let Some(peeked_char) = peekable_query.peek() {
+            if *peeked_char != '#' {
+                return Err(format!("Expected a '#', but found: {}", *peeked_char));
+            }
+        }
+        peekable_query.next();
+
+        self.parse_string_value(peekable_query)
     }
 
     fn parse_string_value(&self, peekable_query: &mut Peekable<Chars>) -> Result<String, String> {
