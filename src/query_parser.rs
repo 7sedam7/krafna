@@ -11,6 +11,20 @@ pub struct QueryStatement {
 }
 
 #[derive(Debug)]
+enum ExpressionElement {
+    Tag(String),
+    String(String),
+    Number(f64),
+    Bool(bool),
+}
+
+#[derive(Debug)]
+enum ExpressionOperator {
+    OperatorAnd,
+    OperatorOr,
+}
+
+#[derive(Debug)]
 pub enum FromExpressionElement {
     OpenedBracket,
     ClosedBracket,
@@ -136,14 +150,19 @@ impl QueryParser {
         }
 
         self.parse_whitespaces(peekable_query);
-        let mut from_expresion: Vec<FromExpressionElement> = Vec::new();
+        let mut from_expression: Vec<FromExpressionElement> = Vec::new();
 
-        match self.parse_expression(peekable_query, &mut from_expresion) {
+        match self.parse_expression(
+            peekable_query, 
+            &mut from_expression,
+            |peekable_query| self.parse_tag(peekable_query),
+            |peekable_query| self.parse_from_operators(peekable_query)
+        ) {
             Ok(()) => {}
             Err(error) => return Err(error)
         }
 
-        Ok(from_expresion)
+        Ok(from_expression)
     }
 
     // call only when you expect WHERE should happen
@@ -179,15 +198,24 @@ impl QueryParser {
         Ok(FieldValue::String("test".to_string()))
     }
 
-    fn parse_expression(&self, peekable_query: &mut Peekable<Chars>, from_expresion: &mut Vec<FromExpressionElement>) -> Result<(), String> {
+    fn parse_expression<T, F1, F2>(
+        &self, 
+        peekable_query: &mut Peekable<Chars>, 
+        expression_elements: &mut Vec<T>,
+        parse_elements: F1,
+        parse_operators: F2
+    ) -> Result<(), String>
+    where 
+        F1: FnMut(&mut Peekable<Chars>) -> Result<T, String>,
+        F2: FnMut(&mut Peekable<Chars>) -> Result<T, String> {
         if let Some(peeked_char) = peekable_query.peek() {
             if *peeked_char == '(' {
-                match self.parse_bracket_expression(peekable_query, from_expresion) {
+                match self.parse_bracket_expression(peekable_query, expression_elements, parse_elements, parse_operators) {
                     Ok(()) => {}
                     Err(error) => return Err(error)
                 }
             } else {
-                match self.parse_no_bracket_expression(peekable_query, from_expresion) {
+                match self.parse_no_bracket_expression(peekable_query, expression_elements, parse_elements, parse_operators) {
                     Ok(()) => {}
                     Err(error) => return Err(error)
                 }
@@ -200,17 +228,26 @@ impl QueryParser {
         Ok(())
     }
 
-    fn parse_bracket_expression(&self, peekable_query: &mut Peekable<Chars>, from_expresion: &mut Vec<FromExpressionElement>) -> Result<(), String> {
+    fn parse_bracket_expression<T, F1, F2>(
+        &self,
+        peekable_query: &mut Peekable<Chars>,
+        expression_elements: &mut Vec<T>,
+        parse_elements: F1,
+        parse_operators: F2
+    ) -> Result<(), String>
+    where 
+        F1: FnMut(&mut Peekable<Chars>) -> Result<T, String>,
+        F2: FnMut(&mut Peekable<Chars>) -> Result<T, String> {
         if let Some(peeked_char) = peekable_query.peek() {
             if *peeked_char != '(' {
                 return Err(format!("Expected a '(', but found: {}", *peeked_char));
             }
         }
-        from_expresion.push(FromExpressionElement::OpenedBracket);
+        expression_elements.push(FromExpressionElement::OpenedBracket);
         peekable_query.next();
         self.parse_whitespaces(peekable_query);
 
-        match self.parse_expression(peekable_query, from_expresion) {
+        match self.parse_expression(peekable_query, expression_elements, parse_elements, parse_operators) {
             Ok(()) => {}
             Err(error) => return Err(error)
         }
@@ -222,41 +259,50 @@ impl QueryParser {
         } else {
             return Err("Expected a ')', but found nothing".to_string());
         }
-        from_expresion.push(FromExpressionElement::ClosedBracket);
+        expression_elements.push(FromExpressionElement::ClosedBracket);
         peekable_query.next();
         self.parse_whitespaces(peekable_query);
 
-        match self.parse_operator(peekable_query) {
-            Ok(op) => { from_expresion.push(op) }
+        match parse_operators(peekable_query) {
+            Ok(op) => { expression_elements.push(op) }
             Err(_) => return Ok(())
         }
         self.parse_whitespaces(peekable_query);
 
-        self.parse_expression(peekable_query, from_expresion)
+        self.parse_expression(peekable_query, expression_elements, parse_elements, parse_operators)
     }
 
-    fn parse_no_bracket_expression(&self, peekable_query: &mut Peekable<Chars>, from_expresion: &mut Vec<FromExpressionElement>) -> Result<(), String> {
-        match self.parse_tag(peekable_query) {
-            Ok(sv) => { from_expresion.push(FromExpressionElement::Tag(sv)) }
+    fn parse_no_bracket_expression<T, F1, F2>(
+        &self, 
+        peekable_query: &mut Peekable<Chars>, 
+        expression_elements: &mut Vec<T>,
+        mut parse_elements: F1,
+        mut parse_operators: F2
+    ) -> Result<(), String>
+    where 
+        F1: FnMut(&mut Peekable<Chars>) -> Result<T, String>,
+        F2: FnMut(&mut Peekable<Chars>) -> Result<T, String> {
+        match parse_elements(peekable_query) {
+            Ok(el) => { expression_elements.push(el) }
             Err(error) => return Err(error)
         }
         self.parse_whitespaces(peekable_query);
 
         loop {
-            match self.parse_operator(peekable_query) {
-                Ok(op) => { from_expresion.push(op) }
+            match parse_operators(peekable_query) {
+                Ok(op) => { expression_elements.push(op) }
                 Err(_) => return Ok(())
             }
             self.parse_whitespaces(peekable_query);
 
-            match self.parse_expression(peekable_query, from_expresion) {
+            match self.parse_expression(peekable_query, expression_elements, &mut parse_elements, &mut parse_operators) {
                 Ok(()) => {}
                 Err(error) => return Err(error)
             }
         }
     }
 
-    fn parse_operator(&self, peekable_query: &mut Peekable<Chars>) -> Result<FromExpressionElement, String> {
+    fn parse_from_operators(&self, peekable_query: &mut Peekable<Chars>) -> Result<FromExpressionElement, String> {
         if let Some(peeked_char) = peekable_query.peek() {
             if *peeked_char == 'a' || *peeked_char == 'A' {
                 match self.parse_keyword(peekable_query, "AND", false) {
@@ -276,7 +322,7 @@ impl QueryParser {
         }
     }
 
-    fn parse_tag(&self, peekable_query: &mut Peekable<Chars>) -> Result<String, String> {
+    fn parse_tag(&self, peekable_query: &mut Peekable<Chars>) -> Result<FromExpressionElement, String> {
         if let Some(peeked_char) = peekable_query.peek() {
             if *peeked_char != '#' {
                 return Err(format!("Expected a '#', but found: {}", *peeked_char));
@@ -284,18 +330,14 @@ impl QueryParser {
         }
         peekable_query.next();
 
-        self.parse_string_value(peekable_query)
-    }
-
-    fn parse_string_value(&self, peekable_query: &mut Peekable<Chars>) -> Result<String, String> {
-        let mut field_name = String::new();
+        let mut tag = String::new();
 
         if let Some(peeked_char) = peekable_query.peek() {
             // First char can't be a number
             if !(*peeked_char).is_alphabetic() && *peeked_char != '_' && *peeked_char != '-' {
                 return Err(format!("Field name expected. They must start with letter, underscore or a minus, found: {}", *peeked_char));
             }
-            field_name.push(*peeked_char);
+            tag.push(*peeked_char);
             peekable_query.next();
         } else {
             return Err("Field name expected. nothing found".to_string());
@@ -305,11 +347,11 @@ impl QueryParser {
             if !(*peeked_char).is_alphanumeric() && *peeked_char != '_' && *peeked_char != '-' && *peeked_char != '/' {
                 break;
             }
-            field_name.push(*peeked_char);
+            tag.push(*peeked_char);
             peekable_query.next();
         }
 
-        Ok(field_name)
+        Ok(FromExpressionElement::Tag(tag))
     }
 
     fn parse_field_name(&self, peekable_query: &mut Peekable<Chars>) -> Result<String, String> {
