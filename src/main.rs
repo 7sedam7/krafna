@@ -47,7 +47,7 @@ fn get_markdown_files(dir: &str) -> Result<Vec<PathBuf>, Box<dyn Error>> {
 //     Ok(results)
 // }
 
-// 
+//
 fn read_frontmatter(files: Vec<PathBuf>) -> Result<Vec<(PathBuf, Pod)>, Box<dyn Error>> {
     let matter = Matter::<YAML>::new();
 
@@ -65,17 +65,19 @@ fn read_frontmatter(files: Vec<PathBuf>) -> Result<Vec<(PathBuf, Pod)>, Box<dyn 
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let args: Vec<String> = env::args().collect();
-    if args.len() < 2 {
-        println!("Missing directory path!");
-        return Ok(());
-    }
+    //let args: Vec<String> = env::args().collect();
+    //if args.len() < 2 {
+    //    println!("Missing directory path!");
+    //    return Ok(());
+    //}
+    //
+    //let dir_path = &args[1];
 
-    let dir_path = &args[1];
-
-    if let Some(query) = env::args().nth(2) {
+    //if let Some(query) = env::args().nth(2) {
+    let dir_path = "~/.dotfiles/";
+    if let query = "select test from ( (#kifla or #space  ) and #mifla)".to_string() {
         let parser = QueryParser::new(query);
-        
+
         match parser.parse() {
             Ok(statement) => println!("Parsed query statement: {:?}", statement),
             Err(e) => {
