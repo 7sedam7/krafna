@@ -1,7 +1,4 @@
 use std::collections::VecDeque;
-use std::fmt::format;
-use std::iter::Peekable;
-use std::str::Chars;
 
 #[derive(Debug)]
 pub struct QueryStatement {
@@ -18,14 +15,37 @@ trait Expression {
 }
 
 #[derive(Debug)]
-enum ExpressionElement {
+pub enum FromExpressionElement {
+    OpenedBracket,
+    ClosedBracket,
     Tag(String),
-    String(String),
-    Number(f64),
-    Bool(bool),
+    OperatorAnd,
+    OperatorOr,
 }
 
 impl Expression for FromExpressionElement {
+    fn allows_brackets() -> bool {
+        true
+    }
+    fn opened_bracket() -> Self {
+        Self::OpenedBracket
+    }
+    fn closed_bracket() -> Self {
+        Self::ClosedBracket
+    }
+}
+
+#[derive(Debug)]
+pub enum WhereExpressionElement {
+    OpenedBracket,
+    ClosedBracket,
+    FieldName(String),
+    FieldValue,
+    OperatorAnd,
+    OperatorOr,
+}
+
+impl Expression for WhereExpressionElement {
     fn allows_brackets() -> bool {
         true
     }
@@ -44,22 +64,11 @@ enum ExpressionOperator {
 }
 
 #[derive(Debug)]
-pub enum FromExpressionElement {
-    OpenedBracket,
-    ClosedBracket,
+enum ExpressionElement {
     Tag(String),
-    OperatorAnd,
-    OperatorOr,
-}
-
-#[derive(Debug)]
-pub enum WhereExpressionElement {
-    OpenedBracket,
-    ClosedBracket,
-    FieldName(String),
-    FieldValue,
-    OperatorAnd,
-    Operatorzor,
+    String(String),
+    Number(f64),
+    Bool(bool),
 }
 
 #[derive(Debug)]

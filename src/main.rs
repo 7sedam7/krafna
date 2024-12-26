@@ -7,7 +7,7 @@ use std::{env, fs};
 use walkdir::WalkDir;
 
 mod query_parser;
-use query_parser::{QueryParser, QueryStatement};
+use query_parser::QueryParser;
 
 fn get_markdown_files(dir: &str) -> Result<Vec<PathBuf>, Box<dyn Error>> {
     let mut markdown_files = Vec::new();
@@ -65,17 +65,18 @@ fn read_frontmatter(files: Vec<PathBuf>) -> Result<Vec<(PathBuf, Pod)>, Box<dyn 
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    //let args: Vec<String> = env::args().collect();
-    //if args.len() < 2 {
-    //    println!("Missing directory path!");
-    //    return Ok(());
-    //}
-    //
-    //let dir_path = &args[1];
+    let args: Vec<String> = env::args().collect();
+    //println!("{:?}", args);
+    if args.len() < 2 {
+        println!("Missing directory path!");
+        return Ok(());
+    }
 
-    //if let Some(query) = env::args().nth(2) {
-    let dir_path = "~/.dotfiles/";
-    if let query = "select test from ( (#kifla or #space  ) and #mifla)".to_string() {
+    let dir_path = &args[1];
+
+    if let Some(query) = env::args().nth(2) {
+        //let dir_path = "~/.dotfiles/";
+        //if let query = "select test from ( (#kifla or #space  ) and #mifla)".to_string() {
         let parser = QueryParser::new(query);
 
         match parser.parse() {
