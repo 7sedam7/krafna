@@ -564,3 +564,174 @@ impl QueryParser {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use core::panic;
+
+    use crate::query_parser::{PeekableDeque, QueryParser};
+
+    #[test]
+    fn parse_from_operators() {}
+
+    #[test]
+    fn parse_no_bracket_expression() {}
+
+    #[test]
+    fn parse_bracket_expression() {}
+
+    #[test]
+    fn parse_expression() {}
+
+    #[test]
+    fn parse_field_value() {}
+
+    #[test]
+    fn parse_order_by() {}
+
+    #[test]
+    fn parse_where() {}
+
+    #[test]
+    fn parse_from() {}
+
+    #[test]
+    fn parse_select() {}
+
+    #[test]
+    fn parse_tag() {}
+
+    #[test]
+    fn test_parse_field_name() {}
+
+    #[test]
+    fn test_parse_keyword_case_sensitive() -> Result<(), String> {
+        let query = "SeLeCt ".to_string();
+        let keyword = "SELECT".to_string();
+        let parser = QueryParser::new(query.clone());
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+        if let Some(peeked_char) = peekable_query.peek() {
+            assert_eq!('S', *peeked_char);
+        } else {
+            panic!("Expected 'S' char, but got nothing!");
+        }
+
+        if let Ok(()) = parser.parse_keyword(&mut peekable_query, &keyword, true) {
+            return Err(
+                "It should fail since there is no match if we take into account case sensitivity!"
+                    .to_string(),
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_keyword_exact_case_sensitive() -> Result<(), String> {
+        let query = "SeLeCt ".to_string();
+        let keyword = "SeLeCt".to_string();
+        let parser = QueryParser::new(query.clone());
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+        if let Some(peeked_char) = peekable_query.peek() {
+            assert_eq!('S', *peeked_char);
+        } else {
+            panic!("Expected 'S' char, but got nothing!");
+        }
+
+        match parser.parse_keyword(&mut peekable_query, &keyword, true) {
+            Ok(()) => {}
+            Err(error) => return Err(error),
+        }
+
+        if let Some(peeked_char) = peekable_query.peek() {
+            assert_eq!(' ', *peeked_char);
+        } else {
+            panic!("Expected empty space, but got nothing!");
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_keyword_exact_case_insensitive() -> Result<(), String> {
+        let query = "SELECT ".to_string();
+        let keyword = "SeLeCt".to_string();
+        let parser = QueryParser::new(query.clone());
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+        if let Some(peeked_char) = peekable_query.peek() {
+            assert_eq!('S', *peeked_char);
+        } else {
+            panic!("Expected 'S' char, but got nothing!");
+        }
+
+        match parser.parse_keyword(&mut peekable_query, &keyword, false) {
+            Ok(()) => {}
+            Err(error) => return Err(error),
+        }
+
+        if let Some(peeked_char) = peekable_query.peek() {
+            assert_eq!(' ', *peeked_char);
+        } else {
+            panic!("Expected empty space, but got nothing!");
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_keyword_start_with_whitespace() -> Result<(), String> {
+        let query = "  SELECT".to_string();
+        let keyword = "SELECT".to_string();
+        let parser = QueryParser::new(query.clone());
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+        if let Some(peeked_char) = peekable_query.peek() {
+            assert_eq!(' ', *peeked_char);
+        } else {
+            panic!("Expected empty space, but got nothing!");
+        }
+
+        if let Ok(()) = parser.parse_keyword(&mut peekable_query, &keyword, false) {
+            return Err("It should fail since it is supposed to expect the keywoard and it has empty space in the beginning!".to_string());
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_whitespaces_skip_whitspace() {
+        let query = "  \t  \t\t\n  \t\n\n  a".to_string();
+        let parser = QueryParser::new(query.clone());
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+        if let Some(peeked_char) = peekable_query.peek() {
+            assert_eq!(' ', *peeked_char);
+        } else {
+            panic!("Expected empty space, but got nothing!");
+        }
+
+        parser.parse_whitespaces(&mut peekable_query);
+        if let Some(peeked_char) = peekable_query.peek() {
+            assert_eq!('a', *peeked_char);
+        } else {
+            panic!("Expected 'a' char, but got nothing!");
+        }
+    }
+
+    #[test]
+    fn test_parse_whitespaces_nothing_to_skip() {
+        let query = "a  \t\t\n\n  ".to_string();
+        let parser = QueryParser::new(query.clone());
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+        if let Some(peeked_char) = peekable_query.peek() {
+            assert_eq!('a', *peeked_char);
+        } else {
+            panic!("Expected 'a' char, but got nothing!");
+        }
+
+        parser.parse_whitespaces(&mut peekable_query);
+        if let Some(peeked_char) = peekable_query.peek() {
+            assert_eq!('a', *peeked_char);
+        } else {
+            panic!("Expected 'a' char, but got nothing!");
+        }
+    }
+}
