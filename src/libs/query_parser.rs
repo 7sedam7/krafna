@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use crate::libs::peekable_deque::PeekableDeque;
 
 #[derive(Debug)]
 pub struct QueryStatement {
@@ -92,33 +92,6 @@ pub enum OrderDirection {
 
 pub struct QueryParser {
     query: String,
-}
-
-#[derive(Debug)]
-struct PeekableDeque<T> {
-    deque: VecDeque<T>,
-}
-
-impl<T> PeekableDeque<T> {
-    // Constructor to create a new PeekableDeque from an iterator
-    fn from_iter<I>(iter: I) -> Self
-    where
-        I: IntoIterator<Item = T>,
-    {
-        PeekableDeque {
-            deque: iter.into_iter().collect(),
-        }
-    }
-
-    // Method to get the next item and remove it from the deque
-    fn next(&mut self) -> Option<T> {
-        self.deque.pop_front()
-    }
-
-    // Method to peek at the next item without removing it
-    fn peek(&self) -> Option<&T> {
-        self.deque.front()
-    }
 }
 
 impl QueryParser {
@@ -567,9 +540,8 @@ impl QueryParser {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use core::panic;
-
-    use crate::query_parser::{PeekableDeque, QueryParser};
 
     #[test]
     fn parse_from_operators() {}
@@ -602,19 +574,26 @@ mod tests {
     fn parse_tag() {}
 
     #[test]
-    fn test_parse_field_name() {}
+    fn test_parse_field_name_first_char_num() -> Result<(), String> {
+        let field_name = "5test".to_string();
+        let parser = QueryParser::new(field_name);
+        let mut peekable_query: PeekableDeque<char> =
+            PeekableDeque::from_iter(parser.query.chars());
+
+        if parser.parse_field_name(&mut peekable_query).is_ok() {
+            return Err("It should fail since field name can't start with a number!".to_string());
+        }
+
+        Ok(())
+    }
 
     #[test]
     fn test_parse_keyword_case_sensitive() -> Result<(), String> {
         let query = "SeLeCt ".to_string();
         let keyword = "SELECT".to_string();
-        let parser = QueryParser::new(query.clone());
-        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
-        if let Some(peeked_char) = peekable_query.peek() {
-            assert_eq!('S', *peeked_char);
-        } else {
-            panic!("Expected 'S' char, but got nothing!");
-        }
+        let parser = QueryParser::new(query);
+        let mut peekable_query: PeekableDeque<char> =
+            PeekableDeque::from_iter(parser.query.chars());
 
         if let Ok(()) = parser.parse_keyword(&mut peekable_query, &keyword, true) {
             return Err(
@@ -630,13 +609,9 @@ mod tests {
     fn test_parse_keyword_exact_case_sensitive() -> Result<(), String> {
         let query = "SeLeCt ".to_string();
         let keyword = "SeLeCt".to_string();
-        let parser = QueryParser::new(query.clone());
-        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
-        if let Some(peeked_char) = peekable_query.peek() {
-            assert_eq!('S', *peeked_char);
-        } else {
-            panic!("Expected 'S' char, but got nothing!");
-        }
+        let parser = QueryParser::new(query);
+        let mut peekable_query: PeekableDeque<char> =
+            PeekableDeque::from_iter(parser.query.chars());
 
         match parser.parse_keyword(&mut peekable_query, &keyword, true) {
             Ok(()) => {}
@@ -656,13 +631,9 @@ mod tests {
     fn test_parse_keyword_exact_case_insensitive() -> Result<(), String> {
         let query = "SELECT ".to_string();
         let keyword = "SeLeCt".to_string();
-        let parser = QueryParser::new(query.clone());
-        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
-        if let Some(peeked_char) = peekable_query.peek() {
-            assert_eq!('S', *peeked_char);
-        } else {
-            panic!("Expected 'S' char, but got nothing!");
-        }
+        let parser = QueryParser::new(query);
+        let mut peekable_query: PeekableDeque<char> =
+            PeekableDeque::from_iter(parser.query.chars());
 
         match parser.parse_keyword(&mut peekable_query, &keyword, false) {
             Ok(()) => {}
@@ -682,13 +653,9 @@ mod tests {
     fn test_parse_keyword_start_with_whitespace() -> Result<(), String> {
         let query = "  SELECT".to_string();
         let keyword = "SELECT".to_string();
-        let parser = QueryParser::new(query.clone());
-        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
-        if let Some(peeked_char) = peekable_query.peek() {
-            assert_eq!(' ', *peeked_char);
-        } else {
-            panic!("Expected empty space, but got nothing!");
-        }
+        let parser = QueryParser::new(query);
+        let mut peekable_query: PeekableDeque<char> =
+            PeekableDeque::from_iter(parser.query.chars());
 
         if let Ok(()) = parser.parse_keyword(&mut peekable_query, &keyword, false) {
             return Err("It should fail since it is supposed to expect the keywoard and it has empty space in the beginning!".to_string());
@@ -700,13 +667,9 @@ mod tests {
     #[test]
     fn test_parse_whitespaces_skip_whitspace() {
         let query = "  \t  \t\t\n  \t\n\n  a".to_string();
-        let parser = QueryParser::new(query.clone());
-        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
-        if let Some(peeked_char) = peekable_query.peek() {
-            assert_eq!(' ', *peeked_char);
-        } else {
-            panic!("Expected empty space, but got nothing!");
-        }
+        let parser = QueryParser::new(query);
+        let mut peekable_query: PeekableDeque<char> =
+            PeekableDeque::from_iter(parser.query.chars());
 
         parser.parse_whitespaces(&mut peekable_query);
         if let Some(peeked_char) = peekable_query.peek() {
@@ -719,13 +682,9 @@ mod tests {
     #[test]
     fn test_parse_whitespaces_nothing_to_skip() {
         let query = "a  \t\t\n\n  ".to_string();
-        let parser = QueryParser::new(query.clone());
-        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
-        if let Some(peeked_char) = peekable_query.peek() {
-            assert_eq!('a', *peeked_char);
-        } else {
-            panic!("Expected 'a' char, but got nothing!");
-        }
+        let parser = QueryParser::new(query);
+        let mut peekable_query: PeekableDeque<char> =
+            PeekableDeque::from_iter(parser.query.chars());
 
         parser.parse_whitespaces(&mut peekable_query);
         if let Some(peeked_char) = peekable_query.peek() {

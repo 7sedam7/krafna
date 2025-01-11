@@ -6,8 +6,8 @@ use std::path::PathBuf;
 use std::{env, fs};
 use walkdir::WalkDir;
 
-mod query_parser;
-use query_parser::QueryParser;
+mod libs;
+use libs::query_parser::QueryParser;
 
 fn get_markdown_files(dir: &str) -> Result<Vec<PathBuf>, Box<dyn Error>> {
     let mut markdown_files = Vec::new();
