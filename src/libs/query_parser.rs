@@ -1,4 +1,5 @@
 use crate::libs::peekable_deque::PeekableDeque;
+use std::collections::HashSet;
 
 #[derive(Debug)]
 pub struct QueryStatement {
@@ -247,7 +248,7 @@ impl QueryParser {
         &self,
         peekable_query: &mut PeekableDeque<char>,
     ) -> Result<FieldValue, String> {
-        Ok(FieldValue::String("test".to_string()))
+        Ok(FieldValue::String("".to_string()))
     }
 
     fn parse_expression<T: Expression, F1, F2>(
@@ -388,6 +389,42 @@ impl QueryParser {
         }
     }
 
+    fn parse_operators<String>(
+        &self,
+        peekable_query: &mut PeekableDeque<char>,
+    ) -> Result<String, String> {
+        let operators: HashSet<_> = [
+            "AND", "OR", "IN", "<", "<=", ">", ">=", "==", "!=", "+", "-", "*", "/", "**", "//",
+        ]
+        .into_iter()
+        .map(|s| s.to_string())
+        .collect();
+
+        let mut operator_candidates = operators.clone();
+        let mut index = 0;
+
+        while let Some(&peeked_char) = peekable_query.peek() {
+            operator_candidates.retain(|op| op.chars().nth(index) != Some(peeked_char));
+
+            if operator_candidates.len() == 1 {
+                return Ok(operator_candidates
+                    .into_iter()
+                    .next()
+                    .expect("Set is empty?"));
+            }
+
+            if operator_candidates.is_empty() {
+                break;
+            }
+
+            // Move to the next character and increment the index
+            peekable_query.next();
+            index += 1;
+        }
+
+        Err("No operator".to_string())
+    }
+
     fn parse_from_operators(
         &self,
         peekable_query: &mut PeekableDeque<char>,
@@ -395,23 +432,19 @@ impl QueryParser {
         if let Some(peeked_char) = peekable_query.peek() {
             if *peeked_char == 'a' || *peeked_char == 'A' {
                 match self.parse_keyword(peekable_query, "AND", false) {
-                    Ok(()) => {
-                        return Ok(FromExpressionElement::OperatorAnd);
-                    }
-                    Err(error) => return Err(error),
+                    Ok(()) => Ok(FromExpressionElement::OperatorAnd),
+                    Err(error) => Err(error),
                 }
             } else if *peeked_char == 'o' || *peeked_char == 'O' {
                 match self.parse_keyword(peekable_query, "OR", false) {
-                    Ok(()) => {
-                        return Ok(FromExpressionElement::OperatorOr);
-                    }
-                    Err(error) => return Err(error),
+                    Ok(()) => Ok(FromExpressionElement::OperatorOr),
+                    Err(error) => Err(error),
                 }
             } else {
-                return Err("No operator".to_string());
+                Err("No operator".to_string())
             }
         } else {
-            return Err("No operator".to_string());
+            Err("No operator".to_string())
         }
     }
 
