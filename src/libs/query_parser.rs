@@ -9,6 +9,55 @@ pub struct QueryStatement {
     order_by_fields: Vec<OrderByFieldOption>,
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub enum Operator {
+    And,
+    Or,
+    In,
+    Lt,
+    Lte,
+    Gt,
+    Gte,
+    Eq,
+    Neq,
+    Plus,
+    Minus,
+    Multiply,
+    Divide,
+    Power,
+    FloorDivide,
+}
+
+impl Operator {
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "AND" => Some(Operator::And),
+            "OR" => Some(Operator::Or),
+            "IN" => Some(Operator::In),
+            "<" => Some(Operator::Lt),
+            "<=" => Some(Operator::Lte),
+            ">" => Some(Operator::Gt),
+            ">=" => Some(Operator::Gte),
+            "==" => Some(Operator::Eq),
+            "!=" => Some(Operator::Neq),
+            "+" => Some(Operator::Plus),
+            "-" => Some(Operator::Minus),
+            "*" => Some(Operator::Multiply),
+            "/" => Some(Operator::Divide),
+            "**" => Some(Operator::Power),
+            "//" => Some(Operator::FloorDivide),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum GenericExpression {
+    OpenedBracket,
+    ClosedBracket,
+    Operator(Operator),
+}
+
 trait Expression {
     fn allows_brackets() -> bool;
     fn opened_bracket() -> Self;
@@ -389,25 +438,29 @@ impl QueryParser {
         }
     }
 
-    fn parse_operators(&self, peekable_query: &mut PeekableDeque<char>) -> Result<String, String> {
-        let operators: HashSet<_> = [
+    fn parse_operators(
+        &self,
+        peekable_query: &mut PeekableDeque<char>,
+    ) -> Result<Operator, String> {
+        let mut operator_candidates: HashSet<_> = [
             "AND", "OR", "IN", "<", "<=", ">", ">=", "==", "!=", "+", "-", "*", "/", "**", "//",
         ]
         .into_iter()
         .map(|s| s.to_string())
         .collect();
-
-        let mut operator_candidates = operators.clone();
         let mut index = 0;
 
         while let Some(&peeked_char) = peekable_query.peek() {
             operator_candidates.retain(|op| op.chars().nth(index) != Some(peeked_char));
 
             if operator_candidates.len() == 1 {
-                return Ok(operator_candidates
+                let op = operator_candidates
                     .into_iter()
                     .next()
-                    .expect("Set is empty?"));
+                    .ok_or("Expected one operator but set was empty")?;
+
+                return Operator::from_str(&op)
+                    .ok_or_else(|| format!("Operator '{}' is not a valid operator", op));
             }
 
             if operator_candidates.is_empty() {

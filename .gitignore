@@ -1,2 +1,4 @@
 /target
 mise.toml
+.env
+.aider*
