@@ -1,5 +1,5 @@
 use crate::libs::peekable_deque::PeekableDeque;
-use std::collections::HashSet;
+use hashbrown::HashSet;
 
 #[derive(Debug)]
 pub struct QueryStatement {
@@ -389,10 +389,7 @@ impl QueryParser {
         }
     }
 
-    fn parse_operators<String>(
-        &self,
-        peekable_query: &mut PeekableDeque<char>,
-    ) -> Result<String, String> {
+    fn parse_operators(&self, peekable_query: &mut PeekableDeque<char>) -> Result<String, String> {
         let operators: HashSet<_> = [
             "AND", "OR", "IN", "<", "<=", ">", ">=", "==", "!=", "+", "-", "*", "/", "**", "//",
         ]
