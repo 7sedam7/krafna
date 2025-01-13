@@ -29,25 +29,26 @@ pub enum Operator {
 }
 
 impl Operator {
+    const OPERATOR_MAP: phf::Map<&'static str, Operator> = phf::phf_map! {
+        "AND" => Operator::And,
+        "OR" => Operator::Or,
+        "IN" => Operator::In,
+        "<" => Operator::Lt,
+        "<=" => Operator::Lte,
+        ">" => Operator::Gt,
+        ">=" => Operator::Gte,
+        "==" => Operator::Eq,
+        "!=" => Operator::Neq,
+        "+" => Operator::Plus,
+        "-" => Operator::Minus,
+        "*" => Operator::Multiply,
+        "/" => Operator::Divide,
+        "**" => Operator::Power,
+        "//" => Operator::FloorDivide,
+    };
+
     pub fn from_str(s: &str) -> Option<Self> {
-        match s {
-            "AND" => Some(Operator::And),
-            "OR" => Some(Operator::Or),
-            "IN" => Some(Operator::In),
-            "<" => Some(Operator::Lt),
-            "<=" => Some(Operator::Lte),
-            ">" => Some(Operator::Gt),
-            ">=" => Some(Operator::Gte),
-            "==" => Some(Operator::Eq),
-            "!=" => Some(Operator::Neq),
-            "+" => Some(Operator::Plus),
-            "-" => Some(Operator::Minus),
-            "*" => Some(Operator::Multiply),
-            "/" => Some(Operator::Divide),
-            "**" => Some(Operator::Power),
-            "//" => Some(Operator::FloorDivide),
-            _ => None,
-        }
+        Self::OPERATOR_MAP.get(s).cloned()
     }
 }
 
@@ -442,37 +443,19 @@ impl QueryParser {
         &self,
         peekable_query: &mut PeekableDeque<char>,
     ) -> Result<Operator, String> {
-        let mut operator_candidates: HashSet<_> = [
-            "AND", "OR", "IN", "<", "<=", ">", ">=", "==", "!=", "+", "-", "*", "/", "**", "//",
-        ]
-        .into_iter()
-        .map(|s| s.to_string())
-        .collect();
-        let mut index = 0;
+        let mut potential_opeartor = String::new();
 
         while let Some(&peeked_char) = peekable_query.peek() {
-            operator_candidates.retain(|op| op.chars().nth(index) != Some(peeked_char));
-
-            if operator_candidates.len() == 1 {
-                let op = operator_candidates
-                    .into_iter()
-                    .next()
-                    .ok_or("Expected one operator but set was empty")?;
-
-                return Operator::from_str(&op)
-                    .ok_or_else(|| format!("Operator '{}' is not a valid operator", op));
-            }
-
-            if operator_candidates.is_empty() {
+            if peeked_char.is_whitespace() {
                 break;
             }
 
-            // Move to the next character and increment the index
             peekable_query.next();
-            index += 1;
+            potential_opeartor.push(peeked_char);
         }
 
-        Err("No operator".to_string())
+        Operator::from_str(potential_opeartor.as_str())
+            .ok_or_else(|| format!("Operator '{}' is not a valid operator", potential_opeartor))
     }
 
     fn parse_from_operators(
@@ -522,15 +505,15 @@ impl QueryParser {
             return Err("Field name expected. nothing found".to_string());
         }
 
-        while let Some(peeked_char) = peekable_query.peek() {
-            if !(*peeked_char).is_alphanumeric()
-                && *peeked_char != '_'
-                && *peeked_char != '-'
-                && *peeked_char != '/'
+        while let Some(&peeked_char) = peekable_query.peek() {
+            if !(peeked_char).is_alphanumeric()
+                && peeked_char != '_'
+                && peeked_char != '-'
+                && peeked_char != '/'
             {
                 break;
             }
-            tag.push(*peeked_char);
+            tag.push(peeked_char);
             peekable_query.next();
         }
 
@@ -627,34 +610,130 @@ mod tests {
     use core::panic;
 
     #[test]
+    #[ignore = "TODO: implement this test"]
     fn parse_from_operators() {}
 
     #[test]
+    #[ignore = "TODO: implement this test"]
     fn parse_no_bracket_expression() {}
 
+    #[ignore = "TODO: implement this test"]
     #[test]
     fn parse_bracket_expression() {}
 
+    #[ignore = "TODO: implement this test"]
     #[test]
     fn parse_expression() {}
 
+    #[ignore = "TODO: implement this test"]
     #[test]
     fn parse_field_value() {}
 
+    #[ignore = "TODO: implement this test"]
     #[test]
     fn parse_order_by() {}
 
+    #[ignore = "TODO: implement this test"]
     #[test]
     fn parse_where() {}
 
+    #[ignore = "TODO: implement this test"]
     #[test]
     fn parse_from() {}
 
+    #[ignore = "TODO: implement this test"]
     #[test]
     fn parse_select() {}
 
+    #[ignore = "TODO: implement this test"]
     #[test]
     fn parse_tag() {}
+
+    #[test]
+    fn test_parse_existing_operator_with_space() -> Result<(), String> {
+        let operator = "AND ".to_string();
+        let parser = QueryParser::new(operator);
+        let mut peekable_query: PeekableDeque<char> =
+            PeekableDeque::from_iter(parser.query.chars());
+
+        match parser.parse_operators(&mut peekable_query) {
+            Ok(op) => assert_eq!(Operator::And, op),
+            Err(error) => return Err(error),
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_existing_operator() -> Result<(), String> {
+        let operator = "AND".to_string();
+        let parser = QueryParser::new(operator);
+        let mut peekable_query: PeekableDeque<char> =
+            PeekableDeque::from_iter(parser.query.chars());
+
+        match parser.parse_operators(&mut peekable_query) {
+            Ok(op) => assert_eq!(Operator::And, op),
+            Err(error) => return Err(error),
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_non_existing_long_operator() -> Result<(), String> {
+        let operator = "ANDN".to_string();
+        let parser = QueryParser::new(operator);
+        let mut peekable_query: PeekableDeque<char> =
+            PeekableDeque::from_iter(parser.query.chars());
+
+        if parser.parse_operators(&mut peekable_query).is_ok() {
+            return Err("It should fail since there is no operator ANDN!".to_string());
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_non_existing_short_operator_with_space() -> Result<(), String> {
+        let operator = "A ".to_string();
+        let parser = QueryParser::new(operator);
+        let mut peekable_query: PeekableDeque<char> =
+            PeekableDeque::from_iter(parser.query.chars());
+
+        if parser.parse_operators(&mut peekable_query).is_ok() {
+            return Err("It should fail since there is no operator ANN!".to_string());
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_non_existing_short_operator() -> Result<(), String> {
+        let operator = "A".to_string();
+        let parser = QueryParser::new(operator);
+        let mut peekable_query: PeekableDeque<char> =
+            PeekableDeque::from_iter(parser.query.chars());
+
+        if parser.parse_operators(&mut peekable_query).is_ok() {
+            return Err("It should fail since there is no operator ANN!".to_string());
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_non_existing_operator() -> Result<(), String> {
+        let operator = "ANN".to_string();
+        let parser = QueryParser::new(operator);
+        let mut peekable_query: PeekableDeque<char> =
+            PeekableDeque::from_iter(parser.query.chars());
+
+        if parser.parse_operators(&mut peekable_query).is_ok() {
+            return Err("It should fail since there is no operator ANN!".to_string());
+        }
+
+        Ok(())
+    }
 
     #[test]
     fn test_parse_field_name_first_char_num() -> Result<(), String> {
@@ -678,7 +757,10 @@ mod tests {
         let mut peekable_query: PeekableDeque<char> =
             PeekableDeque::from_iter(parser.query.chars());
 
-        if let Ok(()) = parser.parse_keyword(&mut peekable_query, &keyword, true) {
+        if parser
+            .parse_keyword(&mut peekable_query, &keyword, true)
+            .is_ok()
+        {
             return Err(
                 "It should fail since there is no match if we take into account case sensitivity!"
                     .to_string(),
