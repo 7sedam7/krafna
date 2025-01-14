@@ -1,31 +1,28 @@
-use krafna::{QueryParser, QueryStatement};
-use krafna::libs::query_parser::FromExpressionElement;
+use krafna::libs::query_parser::ExpressionElement;
+use krafna::libs::query_parser::Operator;
+use krafna::QueryStatement;
 
 #[test]
 fn test_complex_query_parsing() {
     let query = "SELECT field1, field2 FROM (#tag1 and  (#tag2 or #tag3)   )";
-    let parser = QueryParser::new(query.to_string());
 
-    let result = parser.parse();
-    assert!(result.is_ok(), "Parsing should succeed");
-
-    let query_statement = result.unwrap();
+    let result: QueryStatement = query.parse().expect("Parsing should succeed");
 
     // Verify SELECT fields
-    assert_eq!(query_statement.select_fields, vec!["field1", "field2"]);
+    assert_eq!(result.select_fields, vec!["field1", "field2"]);
 
     // Verify FROM expression
     let expected_from = vec![
-        FromExpressionElement::OpenedBracket,
-        FromExpressionElement::Tag("tag1".to_string()),
-        FromExpressionElement::OperatorAnd,
-        FromExpressionElement::OpenedBracket,
-        FromExpressionElement::Tag("tag2".to_string()),
-        FromExpressionElement::OperatorOr,
-        FromExpressionElement::Tag("tag3".to_string()),
-        FromExpressionElement::ClosedBracket,
-        FromExpressionElement::ClosedBracket,
+        ExpressionElement::OpenedBracket,
+        ExpressionElement::Tag("tag1".to_string()),
+        ExpressionElement::Operator(Operator::And),
+        ExpressionElement::OpenedBracket,
+        ExpressionElement::Tag("tag2".to_string()),
+        ExpressionElement::Operator(Operator::Or),
+        ExpressionElement::Tag("tag3".to_string()),
+        ExpressionElement::ClosedBracket,
+        ExpressionElement::ClosedBracket,
     ];
 
-    assert_eq!(query_statement.from_tables, expected_from);
+    assert_eq!(result.from_tables, expected_from);
 }

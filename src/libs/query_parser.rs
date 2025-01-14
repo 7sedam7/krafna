@@ -1,13 +1,5 @@
 use crate::libs::peekable_deque::PeekableDeque;
-use hashbrown::HashSet;
-
-#[derive(Debug)]
-pub struct QueryStatement {
-    pub select_fields: Vec<String>,
-    pub from_tables: Vec<FromExpressionElement>,
-    pub where_expression: Vec<WhereExpressionElement>,
-    pub order_by_fields: Vec<OrderByFieldOption>,
-}
+use std::str::FromStr;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Operator {
@@ -47,43 +39,35 @@ impl Operator {
         "//" => Operator::FloorDivide,
     };
 
-    pub fn from_str(s: &str) -> Option<Self> {
-        Self::OPERATOR_MAP.get(s).cloned()
+    pub fn get_operator_first_chars() -> String {
+        Self::OPERATOR_MAP
+            .keys()
+            .map(|s| s.chars().next().unwrap())
+            .collect::<String>()
     }
 }
 
-#[derive(Debug)]
-pub enum GenericExpression {
-    OpenedBracket,
-    ClosedBracket,
-    Operator(Operator),
-}
+impl FromStr for Operator {
+    type Err = String;
 
-trait Expression {
-    fn allows_brackets() -> bool;
-    fn opened_bracket() -> Self;
-    fn closed_bracket() -> Self;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        //Option<Self> {
+        match Self::OPERATOR_MAP.get(s.to_uppercase().as_str()).cloned() {
+            Some(op) => return Ok(op),
+            None => return Err(format!("Unknown operator: {}", s)),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
-pub enum FromExpressionElement {
+pub enum ExpressionElement {
     OpenedBracket,
     ClosedBracket,
+    Operator(Operator),
     Tag(String),
-    OperatorAnd,
-    OperatorOr,
-}
-
-impl Expression for FromExpressionElement {
-    fn allows_brackets() -> bool {
-        true
-    }
-    fn opened_bracket() -> Self {
-        Self::OpenedBracket
-    }
-    fn closed_bracket() -> Self {
-        Self::ClosedBracket
-    }
+    String(String),
+    Number(f64),
+    Bool(bool),
 }
 
 #[derive(Debug)]
@@ -94,32 +78,6 @@ pub enum WhereExpressionElement {
     FieldValue,
     OperatorAnd,
     OperatorOr,
-}
-
-impl Expression for WhereExpressionElement {
-    fn allows_brackets() -> bool {
-        true
-    }
-    fn opened_bracket() -> Self {
-        Self::OpenedBracket
-    }
-    fn closed_bracket() -> Self {
-        Self::ClosedBracket
-    }
-}
-
-#[derive(Debug)]
-enum ExpressionOperator {
-    OperatorAnd,
-    OperatorOr,
-}
-
-#[derive(Debug)]
-enum ExpressionElement {
-    Tag(String),
-    String(String),
-    Number(f64),
-    Bool(bool),
 }
 
 #[derive(Debug)]
@@ -141,38 +99,35 @@ pub enum OrderDirection {
     DESC,
 }
 
-pub struct QueryParser {
-    query: String,
+#[derive(Debug)]
+pub struct QueryStatement {
+    pub select_fields: Vec<String>,
+    pub from_tables: Vec<ExpressionElement>,
+    pub where_expression: Vec<WhereExpressionElement>,
+    pub order_by_fields: Vec<OrderByFieldOption>,
 }
 
-impl QueryParser {
-    pub fn new(query: String) -> Self {
-        QueryParser { query }
-    }
+impl FromStr for QueryStatement {
+    type Err = String;
 
-    pub fn parse(&self) -> Result<QueryStatement, String> {
-        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(self.query.chars());
-        let mut query_statement = QueryStatement {
-            select_fields: Vec::new(),
-            from_tables: Vec::new(),
-            where_expression: Vec::new(),
-            order_by_fields: Vec::new(),
-        };
+    fn from_str(query: &str) -> Result<Self, Self::Err> {
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
 
-        match self.parse_select(&mut peekable_query) {
-            Ok(sf) => query_statement.select_fields = sf,
+        let select_fields = match QueryStatement::parse_select(&mut peekable_query) {
+            Ok(sf) => sf,
             Err(error) => return Err(format!("Error: {}, Query: {:?}", error, peekable_query)),
         };
 
-        match self.parse_from(&mut peekable_query) {
-            Ok(ft) => query_statement.from_tables = ft,
+        let from_tables = match QueryStatement::parse_from(&mut peekable_query) {
+            Ok(ft) => ft,
             Err(error) => return Err(format!("Error: {}, Query: {:?}", error, peekable_query)),
         };
 
+        let mut where_expression = Vec::new();
         if let Some(peeked_char) = peekable_query.peek() {
             if *peeked_char == 'w' || *peeked_char == 'W' {
-                match self.parse_where(&mut peekable_query) {
-                    Ok(we) => query_statement.where_expression = we,
+                where_expression = match QueryStatement::parse_where(&mut peekable_query) {
+                    Ok(we) => we,
                     Err(error) => {
                         return Err(format!("Error: {}, Query: {:?}", error, peekable_query))
                     }
@@ -180,10 +135,11 @@ impl QueryParser {
             }
         }
 
+        let mut order_by_fields = Vec::new();
         if let Some(peeked_char) = peekable_query.peek() {
             if *peeked_char == 'o' || *peeked_char == 'O' {
-                match self.parse_order_by(&mut peekable_query) {
-                    Ok(ob) => query_statement.order_by_fields = ob,
+                order_by_fields = match QueryStatement::parse_order_by(&mut peekable_query) {
+                    Ok(ob) => ob,
                     Err(error) => {
                         return Err(format!("Error: {}, Query: {:?}", error, peekable_query))
                     }
@@ -195,14 +151,32 @@ impl QueryParser {
         //    return Err(format!("Unexpected character: {}", *peeked_char));
         //}
 
-        Ok(query_statement)
+        Ok(QueryStatement::new(
+            select_fields,
+            from_tables,
+            where_expression,
+            order_by_fields,
+        ))
+    }
+}
+
+impl QueryStatement {
+    pub fn new(
+        select_fields: Vec<String>,
+        from_tables: Vec<ExpressionElement>,
+        where_expression: Vec<WhereExpressionElement>,
+        order_by_fields: Vec<OrderByFieldOption>,
+    ) -> Self {
+        QueryStatement {
+            select_fields,
+            from_tables,
+            where_expression,
+            order_by_fields,
+        }
     }
 
-    fn parse_select(
-        &self,
-        peekable_query: &mut PeekableDeque<char>,
-    ) -> Result<Vec<String>, String> {
-        match self.parse_keyword(peekable_query, "SELECT", false) {
+    fn parse_select(peekable_query: &mut PeekableDeque<char>) -> Result<Vec<String>, String> {
+        match QueryStatement::parse_keyword(peekable_query, "SELECT", false) {
             Ok(()) => {}
             Err(error) => return Err(error),
         }
@@ -210,14 +184,14 @@ impl QueryParser {
         let mut select_fields: Vec<String> = Vec::new();
 
         loop {
-            self.parse_whitespaces(peekable_query);
+            QueryStatement::parse_whitespaces(peekable_query);
 
-            match self.parse_field_name(peekable_query) {
+            match QueryStatement::parse_field_name(peekable_query) {
                 Ok(field_name) => select_fields.push(field_name),
                 Err(error) => return Err(error),
             }
 
-            self.parse_whitespaces(peekable_query);
+            QueryStatement::parse_whitespaces(peekable_query);
 
             if let Some(peeked_char) = peekable_query.peek() {
                 if *peeked_char != ',' {
@@ -232,23 +206,17 @@ impl QueryParser {
     }
 
     fn parse_from(
-        &self,
         peekable_query: &mut PeekableDeque<char>,
-    ) -> Result<Vec<FromExpressionElement>, String> {
-        match self.parse_keyword(peekable_query, "FROM", false) {
+    ) -> Result<Vec<ExpressionElement>, String> {
+        match QueryStatement::parse_keyword(peekable_query, "FROM", false) {
             Ok(()) => {}
             Err(error) => return Err(error),
         }
 
-        self.parse_whitespaces(peekable_query);
-        let mut from_expression: Vec<FromExpressionElement> = Vec::new();
+        QueryStatement::parse_whitespaces(peekable_query);
+        let mut from_expression: Vec<ExpressionElement> = Vec::new();
 
-        match self.parse_expression(
-            peekable_query,
-            &mut from_expression,
-            &|peekable_query| self.parse_tag(peekable_query),
-            &|peekable_query| self.parse_from_operators(peekable_query),
-        ) {
+        match QueryStatement::parse_expression(peekable_query, &mut from_expression) {
             Ok(()) => {}
             Err(error) => return Err(error),
         }
@@ -258,14 +226,13 @@ impl QueryParser {
 
     // call only when you expect WHERE should happen
     fn parse_where(
-        &self,
         peekable_query: &mut PeekableDeque<char>,
     ) -> Result<Vec<WhereExpressionElement>, String> {
-        match self.parse_keyword(peekable_query, "WHERE", false) {
+        match QueryStatement::parse_keyword(peekable_query, "WHERE", false) {
             Ok(()) => {}
             Err(error) => return Err(error),
         }
-        self.parse_whitespaces(peekable_query);
+        QueryStatement::parse_whitespaces(peekable_query);
 
         let mut where_expression: Vec<WhereExpressionElement> = Vec::new();
         where_expression.push(WhereExpressionElement::OpenedBracket);
@@ -275,15 +242,14 @@ impl QueryParser {
 
     // call only when you expect ORDER BY should happen
     fn parse_order_by(
-        &self,
         peekable_query: &mut PeekableDeque<char>,
     ) -> Result<Vec<OrderByFieldOption>, String> {
-        match self.parse_keyword(peekable_query, "ORDER BY", false) {
+        match QueryStatement::parse_keyword(peekable_query, "ORDER BY", false) {
             Ok(()) => {}
             Err(error) => return Err(error),
         }
 
-        self.parse_whitespaces(peekable_query);
+        QueryStatement::parse_whitespaces(peekable_query);
 
         let mut order_by_fields: Vec<OrderByFieldOption> = Vec::new();
         order_by_fields.push(OrderByFieldOption {
@@ -294,47 +260,25 @@ impl QueryParser {
         Ok(order_by_fields)
     }
 
-    fn parse_field_value(
-        &self,
-        peekable_query: &mut PeekableDeque<char>,
-    ) -> Result<FieldValue, String> {
+    fn parse_field_value(peekable_query: &mut PeekableDeque<char>) -> Result<FieldValue, String> {
         Ok(FieldValue::String("".to_string()))
     }
 
-    fn parse_expression<T: Expression, F1, F2>(
-        &self,
+    fn parse_expression(
         peekable_query: &mut PeekableDeque<char>,
-        expression_elements: &mut Vec<T>,
-        parse_elements: &F1,
-        parse_operators: &F2,
-    ) -> Result<(), String>
-    where
-        F1: Fn(&mut PeekableDeque<char>) -> Result<T, String>,
-        F2: Fn(&mut PeekableDeque<char>) -> Result<T, String>,
-    {
-        if let Some(peeked_char) = peekable_query.peek() {
-            if *peeked_char == '(' {
-                if !T::allows_brackets() {
-                    return Err(
-                        "Found opened bracket, however, expression does not allow brackets!"
-                            .to_string(),
-                    );
-                }
-                match self.parse_bracket_expression(
-                    peekable_query,
-                    expression_elements,
-                    parse_elements,
-                    parse_operators,
-                ) {
+        expression_elements: &mut Vec<ExpressionElement>,
+    ) -> Result<(), String> {
+        if let Some(&peeked_char) = peekable_query.peek() {
+            if peeked_char == '(' {
+                match QueryStatement::parse_bracket_expression(peekable_query, expression_elements)
+                {
                     Ok(()) => {}
                     Err(error) => return Err(error),
                 }
             } else {
-                match self.parse_no_bracket_expression(
+                match QueryStatement::parse_no_bracket_expression(
                     peekable_query,
                     expression_elements,
-                    parse_elements,
-                    parse_operators,
                 ) {
                     Ok(()) => {}
                     Err(error) => return Err(error),
@@ -343,106 +287,84 @@ impl QueryParser {
         } else {
             return Err("Expected expression, but found nothing".to_string());
         }
-        self.parse_whitespaces(peekable_query);
+        QueryStatement::parse_whitespaces(peekable_query);
 
         Ok(())
     }
 
-    fn parse_bracket_expression<T: Expression, F1, F2>(
-        &self,
+    fn parse_bracket_expression(
         peekable_query: &mut PeekableDeque<char>,
-        expression_elements: &mut Vec<T>,
-        parse_elements: &F1,
-        parse_operators: &F2,
-    ) -> Result<(), String>
-    where
-        F1: Fn(&mut PeekableDeque<char>) -> Result<T, String>,
-        F2: Fn(&mut PeekableDeque<char>) -> Result<T, String>,
-    {
-        if let Some(peeked_char) = peekable_query.peek() {
-            if *peeked_char != '(' {
-                return Err(format!("Expected a '(', but found: {}", *peeked_char));
+        expression_elements: &mut Vec<ExpressionElement>,
+    ) -> Result<(), String> {
+        if let Some(&peeked_char) = peekable_query.peek() {
+            if peeked_char != '(' {
+                return Err(format!("Expected a '(', but found: {}", peeked_char));
             }
         }
-        expression_elements.push(T::opened_bracket());
+        expression_elements.push(ExpressionElement::OpenedBracket);
         peekable_query.next();
-        self.parse_whitespaces(peekable_query);
+        QueryStatement::parse_whitespaces(peekable_query);
 
-        match self.parse_expression(
-            peekable_query,
-            expression_elements,
-            parse_elements,
-            parse_operators,
-        ) {
+        match QueryStatement::parse_expression(peekable_query, expression_elements) {
             Ok(()) => {}
             Err(error) => return Err(error),
         }
 
-        if let Some(peeked_char) = peekable_query.peek() {
-            if *peeked_char != ')' {
-                return Err(format!("Expected a ')', but found: {}", *peeked_char));
+        if let Some(&peeked_char) = peekable_query.peek() {
+            if peeked_char != ')' {
+                return Err(format!("Expected a ')', but found: {}", peeked_char));
             }
         } else {
             return Err("Expected a ')', but found nothing".to_string());
         }
-        expression_elements.push(T::closed_bracket());
+        expression_elements.push(ExpressionElement::ClosedBracket);
         peekable_query.next();
-        self.parse_whitespaces(peekable_query);
+        QueryStatement::parse_whitespaces(peekable_query);
 
-        match parse_operators(peekable_query) {
-            Ok(op) => expression_elements.push(op),
+        match QueryStatement::parse_operators(peekable_query) {
+            Ok(op) => expression_elements.push(ExpressionElement::Operator(op)),
             Err(_) => return Ok(()),
         }
-        self.parse_whitespaces(peekable_query);
+        QueryStatement::parse_whitespaces(peekable_query);
 
-        self.parse_expression(
-            peekable_query,
-            expression_elements,
-            parse_elements,
-            parse_operators,
-        )
+        QueryStatement::parse_expression(peekable_query, expression_elements)
     }
 
-    fn parse_no_bracket_expression<T: Expression, F1, F2>(
-        &self,
+    fn parse_no_bracket_expression(
         peekable_query: &mut PeekableDeque<char>,
-        expression_elements: &mut Vec<T>,
-        parse_elements: &F1,
-        parse_operators: &F2,
-    ) -> Result<(), String>
-    where
-        F1: Fn(&mut PeekableDeque<char>) -> Result<T, String>,
-        F2: Fn(&mut PeekableDeque<char>) -> Result<T, String>,
-    {
-        match parse_elements(peekable_query) {
-            Ok(el) => expression_elements.push(el),
+        expression_elements: &mut Vec<ExpressionElement>,
+    ) -> Result<(), String> {
+        match QueryStatement::parse_tag(peekable_query) {
+            // TODO: need to replace with generic parse element
+            Ok(el) => {
+                expression_elements.push(ExpressionElement::Tag(el)) // TODO: need to
+            }
+            // replace with generic element parsing
             Err(error) => return Err(error),
         }
-        self.parse_whitespaces(peekable_query);
+        QueryStatement::parse_whitespaces(peekable_query);
 
         loop {
-            match parse_operators(peekable_query) {
-                Ok(op) => expression_elements.push(op),
+            match QueryStatement::parse_operators(peekable_query) {
+                Ok(op) => expression_elements.push(ExpressionElement::Operator(op)),
                 Err(_) => return Ok(()),
             }
-            self.parse_whitespaces(peekable_query);
+            QueryStatement::parse_whitespaces(peekable_query);
 
-            match self.parse_expression(
-                peekable_query,
-                expression_elements,
-                parse_elements,
-                parse_operators,
-            ) {
+            match QueryStatement::parse_expression(peekable_query, expression_elements) {
                 Ok(()) => {}
                 Err(error) => return Err(error),
             }
         }
     }
 
-    fn parse_operators(
-        &self,
-        peekable_query: &mut PeekableDeque<char>,
-    ) -> Result<Operator, String> {
+    fn parse_operators(peekable_query: &mut PeekableDeque<char>) -> Result<Operator, String> {
+        if let Some(&peeked_char) = peekable_query.peek() {
+            if !Operator::get_operator_first_chars().contains(peeked_char.to_ascii_uppercase()) {
+                return Err(format!("No operator starts with {}", peeked_char));
+            }
+        }
+
         let mut potential_opeartor = String::new();
 
         while let Some(&peeked_char) = peekable_query.peek() {
@@ -454,52 +376,25 @@ impl QueryParser {
             potential_opeartor.push(peeked_char);
         }
 
-        Operator::from_str(potential_opeartor.as_str())
-            .ok_or_else(|| format!("Operator '{}' is not a valid operator", potential_opeartor))
+        potential_opeartor.parse()
     }
 
-    fn parse_from_operators(
-        &self,
-        peekable_query: &mut PeekableDeque<char>,
-    ) -> Result<FromExpressionElement, String> {
-        if let Some(peeked_char) = peekable_query.peek() {
-            if *peeked_char == 'a' || *peeked_char == 'A' {
-                match self.parse_keyword(peekable_query, "AND", false) {
-                    Ok(()) => Ok(FromExpressionElement::OperatorAnd),
-                    Err(error) => Err(error),
-                }
-            } else if *peeked_char == 'o' || *peeked_char == 'O' {
-                match self.parse_keyword(peekable_query, "OR", false) {
-                    Ok(()) => Ok(FromExpressionElement::OperatorOr),
-                    Err(error) => Err(error),
-                }
-            } else {
-                Err("No operator".to_string())
-            }
-        } else {
-            Err("No operator".to_string())
-        }
-    }
-
-    fn parse_tag(
-        &self,
-        peekable_query: &mut PeekableDeque<char>,
-    ) -> Result<FromExpressionElement, String> {
-        if let Some(peeked_char) = peekable_query.peek() {
-            if *peeked_char != '#' {
-                return Err(format!("Expected a '#', but found: {}", *peeked_char));
+    fn parse_tag(peekable_query: &mut PeekableDeque<char>) -> Result<String, String> {
+        if let Some(&peeked_char) = peekable_query.peek() {
+            if peeked_char != '#' {
+                return Err(format!("Expected a '#', but found: {}", peeked_char));
             }
         }
         peekable_query.next();
 
         let mut tag = String::new();
 
-        if let Some(peeked_char) = peekable_query.peek() {
+        if let Some(&peeked_char) = peekable_query.peek() {
             // First char can't be a number
-            if !(*peeked_char).is_alphabetic() && *peeked_char != '_' && *peeked_char != '-' {
-                return Err(format!("Field name expected. They must start with letter, underscore or a minus, found: {}", *peeked_char));
+            if !(peeked_char).is_alphabetic() && peeked_char != '_' && peeked_char != '-' {
+                return Err(format!("Field name expected. They must start with letter, underscore or a minus, found: {}", peeked_char));
             }
-            tag.push(*peeked_char);
+            tag.push(peeked_char);
             peekable_query.next();
         } else {
             return Err("Field name expected. nothing found".to_string());
@@ -517,10 +412,10 @@ impl QueryParser {
             peekable_query.next();
         }
 
-        Ok(FromExpressionElement::Tag(tag))
+        Ok(tag)
     }
 
-    fn parse_field_name(&self, peekable_query: &mut PeekableDeque<char>) -> Result<String, String> {
+    fn parse_field_name(peekable_query: &mut PeekableDeque<char>) -> Result<String, String> {
         let mut field_name = String::new();
 
         if let Some(peeked_char) = peekable_query.peek() {
@@ -546,7 +441,6 @@ impl QueryParser {
     }
 
     fn parse_keyword(
-        &self,
         peekable_query: &mut PeekableDeque<char>,
         keyword: &str,
         case_sensitive: bool,
@@ -590,7 +484,7 @@ impl QueryParser {
         Ok(())
     }
 
-    fn parse_whitespaces(&self, peekable_query: &mut PeekableDeque<char>) {
+    fn parse_whitespaces(peekable_query: &mut PeekableDeque<char>) {
         loop {
             if let Some(c) = peekable_query.peek() {
                 if !(*c).is_whitespace() {
@@ -652,12 +546,36 @@ mod tests {
     #[test]
     fn test_parse_existing_operator_with_space() -> Result<(), String> {
         let operator = "AND ".to_string();
-        let parser = QueryParser::new(operator);
-        let mut peekable_query: PeekableDeque<char> =
-            PeekableDeque::from_iter(parser.query.chars());
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(operator.chars());
 
-        match parser.parse_operators(&mut peekable_query) {
+        match QueryStatement::parse_operators(&mut peekable_query) {
             Ok(op) => assert_eq!(Operator::And, op),
+            Err(error) => return Err(error),
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_existing_operator_lowercase() -> Result<(), String> {
+        let operator = "and ".to_string();
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(operator.chars());
+
+        match QueryStatement::parse_operators(&mut peekable_query) {
+            Ok(op) => assert_eq!(Operator::And, op),
+            Err(error) => return Err(error),
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_existing_operator_no_text() -> Result<(), String> {
+        let operator = "<=".to_string();
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(operator.chars());
+
+        match QueryStatement::parse_operators(&mut peekable_query) {
+            Ok(op) => assert_eq!(Operator::Lte, op),
             Err(error) => return Err(error),
         }
 
@@ -667,11 +585,9 @@ mod tests {
     #[test]
     fn test_parse_existing_operator() -> Result<(), String> {
         let operator = "AND".to_string();
-        let parser = QueryParser::new(operator);
-        let mut peekable_query: PeekableDeque<char> =
-            PeekableDeque::from_iter(parser.query.chars());
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(operator.chars());
 
-        match parser.parse_operators(&mut peekable_query) {
+        match QueryStatement::parse_operators(&mut peekable_query) {
             Ok(op) => assert_eq!(Operator::And, op),
             Err(error) => return Err(error),
         }
@@ -682,11 +598,9 @@ mod tests {
     #[test]
     fn test_parse_non_existing_long_operator() -> Result<(), String> {
         let operator = "ANDN".to_string();
-        let parser = QueryParser::new(operator);
-        let mut peekable_query: PeekableDeque<char> =
-            PeekableDeque::from_iter(parser.query.chars());
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(operator.chars());
 
-        if parser.parse_operators(&mut peekable_query).is_ok() {
+        if QueryStatement::parse_operators(&mut peekable_query).is_ok() {
             return Err("It should fail since there is no operator ANDN!".to_string());
         }
 
@@ -696,11 +610,9 @@ mod tests {
     #[test]
     fn test_parse_non_existing_short_operator_with_space() -> Result<(), String> {
         let operator = "A ".to_string();
-        let parser = QueryParser::new(operator);
-        let mut peekable_query: PeekableDeque<char> =
-            PeekableDeque::from_iter(parser.query.chars());
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(operator.chars());
 
-        if parser.parse_operators(&mut peekable_query).is_ok() {
+        if QueryStatement::parse_operators(&mut peekable_query).is_ok() {
             return Err("It should fail since there is no operator ANN!".to_string());
         }
 
@@ -710,11 +622,9 @@ mod tests {
     #[test]
     fn test_parse_non_existing_short_operator() -> Result<(), String> {
         let operator = "A".to_string();
-        let parser = QueryParser::new(operator);
-        let mut peekable_query: PeekableDeque<char> =
-            PeekableDeque::from_iter(parser.query.chars());
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(operator.chars());
 
-        if parser.parse_operators(&mut peekable_query).is_ok() {
+        if QueryStatement::parse_operators(&mut peekable_query).is_ok() {
             return Err("It should fail since there is no operator ANN!".to_string());
         }
 
@@ -724,11 +634,9 @@ mod tests {
     #[test]
     fn test_parse_non_existing_operator() -> Result<(), String> {
         let operator = "ANN".to_string();
-        let parser = QueryParser::new(operator);
-        let mut peekable_query: PeekableDeque<char> =
-            PeekableDeque::from_iter(parser.query.chars());
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(operator.chars());
 
-        if parser.parse_operators(&mut peekable_query).is_ok() {
+        if QueryStatement::parse_operators(&mut peekable_query).is_ok() {
             return Err("It should fail since there is no operator ANN!".to_string());
         }
 
@@ -738,11 +646,9 @@ mod tests {
     #[test]
     fn test_parse_field_name_first_char_num() -> Result<(), String> {
         let field_name = "5test".to_string();
-        let parser = QueryParser::new(field_name);
-        let mut peekable_query: PeekableDeque<char> =
-            PeekableDeque::from_iter(parser.query.chars());
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(field_name.chars());
 
-        if parser.parse_field_name(&mut peekable_query).is_ok() {
+        if QueryStatement::parse_field_name(&mut peekable_query).is_ok() {
             return Err("It should fail since field name can't start with a number!".to_string());
         }
 
@@ -753,14 +659,9 @@ mod tests {
     fn test_parse_keyword_case_sensitive() -> Result<(), String> {
         let query = "SeLeCt ".to_string();
         let keyword = "SELECT".to_string();
-        let parser = QueryParser::new(query);
-        let mut peekable_query: PeekableDeque<char> =
-            PeekableDeque::from_iter(parser.query.chars());
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
 
-        if parser
-            .parse_keyword(&mut peekable_query, &keyword, true)
-            .is_ok()
-        {
+        if QueryStatement::parse_keyword(&mut peekable_query, &keyword, true).is_ok() {
             return Err(
                 "It should fail since there is no match if we take into account case sensitivity!"
                     .to_string(),
@@ -774,11 +675,9 @@ mod tests {
     fn test_parse_keyword_exact_case_sensitive() -> Result<(), String> {
         let query = "SeLeCt ".to_string();
         let keyword = "SeLeCt".to_string();
-        let parser = QueryParser::new(query);
-        let mut peekable_query: PeekableDeque<char> =
-            PeekableDeque::from_iter(parser.query.chars());
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
 
-        match parser.parse_keyword(&mut peekable_query, &keyword, true) {
+        match QueryStatement::parse_keyword(&mut peekable_query, &keyword, true) {
             Ok(()) => {}
             Err(error) => return Err(error),
         }
@@ -796,11 +695,9 @@ mod tests {
     fn test_parse_keyword_exact_case_insensitive() -> Result<(), String> {
         let query = "SELECT ".to_string();
         let keyword = "SeLeCt".to_string();
-        let parser = QueryParser::new(query);
-        let mut peekable_query: PeekableDeque<char> =
-            PeekableDeque::from_iter(parser.query.chars());
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
 
-        match parser.parse_keyword(&mut peekable_query, &keyword, false) {
+        match QueryStatement::parse_keyword(&mut peekable_query, &keyword, false) {
             Ok(()) => {}
             Err(error) => return Err(error),
         }
@@ -818,11 +715,9 @@ mod tests {
     fn test_parse_keyword_start_with_whitespace() -> Result<(), String> {
         let query = "  SELECT".to_string();
         let keyword = "SELECT".to_string();
-        let parser = QueryParser::new(query);
-        let mut peekable_query: PeekableDeque<char> =
-            PeekableDeque::from_iter(parser.query.chars());
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
 
-        if let Ok(()) = parser.parse_keyword(&mut peekable_query, &keyword, false) {
+        if let Ok(()) = QueryStatement::parse_keyword(&mut peekable_query, &keyword, false) {
             return Err("It should fail since it is supposed to expect the keywoard and it has empty space in the beginning!".to_string());
         }
 
@@ -832,11 +727,9 @@ mod tests {
     #[test]
     fn test_parse_whitespaces_skip_whitspace() {
         let query = "  \t  \t\t\n  \t\n\n  a".to_string();
-        let parser = QueryParser::new(query);
-        let mut peekable_query: PeekableDeque<char> =
-            PeekableDeque::from_iter(parser.query.chars());
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
 
-        parser.parse_whitespaces(&mut peekable_query);
+        QueryStatement::parse_whitespaces(&mut peekable_query);
         if let Some(peeked_char) = peekable_query.peek() {
             assert_eq!('a', *peeked_char);
         } else {
@@ -847,11 +740,9 @@ mod tests {
     #[test]
     fn test_parse_whitespaces_nothing_to_skip() {
         let query = "a  \t\t\n\n  ".to_string();
-        let parser = QueryParser::new(query);
-        let mut peekable_query: PeekableDeque<char> =
-            PeekableDeque::from_iter(parser.query.chars());
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
 
-        parser.parse_whitespaces(&mut peekable_query);
+        QueryStatement::parse_whitespaces(&mut peekable_query);
         if let Some(peeked_char) = peekable_query.peek() {
             assert_eq!('a', *peeked_char);
         } else {

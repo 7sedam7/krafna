@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::{env, fs};
 use walkdir::WalkDir;
 
-use krafna::QueryParser;
+use krafna::QueryStatement;
 
 fn get_markdown_files(dir: &str) -> Result<Vec<PathBuf>, Box<dyn Error>> {
     let mut markdown_files = Vec::new();
@@ -76,10 +76,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     if let Some(query) = env::args().nth(2) {
         //let dir_path = "~/.dotfiles/";
         //if let query = "select test from ( (#kifla or #space  ) and #mifla)".to_string() {
-        let parser = QueryParser::new(query);
 
-        match parser.parse() {
-            Ok(statement) => println!("Parsed query statement: {:?}", statement),
+        match query.parse::<QueryStatement>() {
+            Ok(qp) => println!("Parsed query statement: {:?}", qp),
             Err(e) => {
                 eprintln!("Error parsing query: {}", e);
                 std::process::exit(1);
