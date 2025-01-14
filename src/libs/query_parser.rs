@@ -3,10 +3,10 @@ use hashbrown::HashSet;
 
 #[derive(Debug)]
 pub struct QueryStatement {
-    select_fields: Vec<String>,
-    from_tables: Vec<FromExpressionElement>,
-    where_expression: Vec<WhereExpressionElement>,
-    order_by_fields: Vec<OrderByFieldOption>,
+    pub select_fields: Vec<String>,
+    pub from_tables: Vec<FromExpressionElement>,
+    pub where_expression: Vec<WhereExpressionElement>,
+    pub order_by_fields: Vec<OrderByFieldOption>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -65,7 +65,7 @@ trait Expression {
     fn closed_bracket() -> Self;
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum FromExpressionElement {
     OpenedBracket,
     ClosedBracket,

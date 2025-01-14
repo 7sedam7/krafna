@@ -3,6 +3,14 @@ name = "krafna"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "krafna"
+path = "src/lib.rs"
+
+[[bin]]
+name = "krafna"
+path = "src/main.rs"
+
 [dependencies]
 gray_matter = "0.2"
 walkdir = "2.4"
