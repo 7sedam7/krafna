@@ -1,5 +1,5 @@
-use krafna::libs::query_parser::ExpressionElement;
-use krafna::libs::query_parser::Operator;
+use krafna::libs::parser::ExpressionElement;
+use krafna::libs::parser::Operator;
 use krafna::QueryStatement;
 
 #[test]
