@@ -1,4 +1,5 @@
 use crate::libs::peekable_deque::PeekableDeque;
+use hashbrown::HashSet;
 use std::str::FromStr;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -44,6 +45,10 @@ impl Operator {
             .keys()
             .map(|s| s.chars().next().unwrap())
             .collect::<String>()
+    }
+
+    pub fn strings_hash() -> HashSet<&'static str> {
+        Self::OPERATOR_MAP.keys().cloned().collect()
     }
 }
 
@@ -355,24 +360,35 @@ impl Query {
     }
 
     fn parse_operators(peekable_query: &mut PeekableDeque<char>) -> Result<Operator, String> {
-        if let Some(&peeked_char) = peekable_query.peek() {
-            if !Operator::get_operator_first_chars().contains(peeked_char.to_ascii_uppercase()) {
-                return Err(format!("No operator starts with {}", peeked_char));
-            }
-        }
-
-        let mut potential_opeartor = String::new();
+        let mut operator_candidates = Operator::strings_hash();
+        let mut index = 0;
 
         while let Some(&peeked_char) = peekable_query.peek() {
-            if peeked_char.is_whitespace() {
+            operator_candidates.retain(|op| {
+                op.len() > index && op.chars().nth(index) == Some(peeked_char.to_ascii_uppercase())
+            });
+
+            if operator_candidates.len() == 1 {
+                let op = operator_candidates
+                    .iter()
+                    .next()
+                    .ok_or("Expected one operator but set was empty")?;
+
+                if op.len() == index + 1 {
+                    peekable_query.next(); // move to the next char
+                    return op.parse();
+                }
+            }
+
+            if operator_candidates.is_empty() {
                 break;
             }
 
             peekable_query.next();
-            potential_opeartor.push(peeked_char);
+            index += 1;
         }
 
-        potential_opeartor.parse()
+        Err("No operator".to_string())
     }
 
     fn parse_tag(peekable_query: &mut PeekableDeque<char>) -> Result<String, String> {
@@ -596,9 +612,12 @@ mod tests {
         let operator = "ANDN".to_string();
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(operator.chars());
 
-        if Query::parse_operators(&mut peekable_query).is_ok() {
-            return Err("It should fail since there is no operator ANDN!".to_string());
+        match Query::parse_operators(&mut peekable_query) {
+            Ok(op) => assert_eq!(Operator::And, op),
+            Err(error) => return Err(error),
         }
+
+        assert_eq!('N', *peekable_query.peek().unwrap());
 
         Ok(())
     }
@@ -635,6 +654,20 @@ mod tests {
         if Query::parse_operators(&mut peekable_query).is_ok() {
             return Err("It should fail since there is no operator ANN!".to_string());
         }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_non_existing_operator_different_first_char() -> Result<(), String> {
+        let operator = "NAN".to_string();
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(operator.chars());
+
+        if Query::parse_operators(&mut peekable_query).is_ok() {
+            return Err("It should fail since there is no operator ANN!".to_string());
+        }
+
+        assert_eq!('N', *peekable_query.peek().unwrap());
 
         Ok(())
     }

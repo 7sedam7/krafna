@@ -4,7 +4,7 @@ use krafna::Query;
 
 #[test]
 fn test_complex_query_parsing() {
-    let query = "SELECT field1, field2 FROM (#tag1 and  (#tag2 or #tag3)   )";
+    let query = "SELECT field1, field2 FROM (#tag1 and  (#tag2 or #tag3)+#tag4  )";
 
     let result: Query = query.parse().expect("Parsing should succeed");
 
@@ -21,6 +21,8 @@ fn test_complex_query_parsing() {
         ExpressionElement::Operator(Operator::Or),
         ExpressionElement::Tag("tag3".to_string()),
         ExpressionElement::ClosedBracket,
+        ExpressionElement::Operator(Operator::Plus),
+        ExpressionElement::Tag("tag4".to_string()),
         ExpressionElement::ClosedBracket,
     ];
 
