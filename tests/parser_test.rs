@@ -1,12 +1,12 @@
 use krafna::libs::parser::ExpressionElement;
 use krafna::libs::parser::Operator;
-use krafna::QueryStatement;
+use krafna::Query;
 
 #[test]
 fn test_complex_query_parsing() {
     let query = "SELECT field1, field2 FROM (#tag1 and  (#tag2 or #tag3)   )";
 
-    let result: QueryStatement = query.parse().expect("Parsing should succeed");
+    let result: Query = query.parse().expect("Parsing should succeed");
 
     // Verify SELECT fields
     assert_eq!(result.select_fields, vec!["field1", "field2"]);
