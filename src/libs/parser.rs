@@ -125,8 +125,8 @@ impl FromStr for Query {
         };
 
         let mut where_expression = Vec::new();
-        if let Some(peeked_char) = peekable_query.peek() {
-            if *peeked_char == 'w' || *peeked_char == 'W' {
+        if let Some(&peeked_char) = peekable_query.peek() {
+            if peeked_char == 'w' || peeked_char == 'W' {
                 where_expression = match Query::parse_where(&mut peekable_query) {
                     Ok(we) => we,
                     Err(error) => {
@@ -137,8 +137,8 @@ impl FromStr for Query {
         }
 
         let mut order_by_fields = Vec::new();
-        if let Some(peeked_char) = peekable_query.peek() {
-            if *peeked_char == 'o' || *peeked_char == 'O' {
+        if let Some(&peeked_char) = peekable_query.peek() {
+            if peeked_char == 'o' || peeked_char == 'O' {
                 order_by_fields = match Query::parse_order_by(&mut peekable_query) {
                     Ok(ob) => ob,
                     Err(error) => {
@@ -148,8 +148,8 @@ impl FromStr for Query {
             }
         }
 
-        //if let Some(peeked_char) = peekable_query.peek() {
-        //    return Err(format!("Unexpected character: {}", *peeked_char));
+        //if let Some(&peeked_char) = peekable_query.peek() {
+        //    return Err(format!("Unexpected character: {}", peeked_char));
         //}
 
         Ok(Query::new(
@@ -194,8 +194,8 @@ impl Query {
 
             Query::parse_whitespaces(peekable_query);
 
-            if let Some(peeked_char) = peekable_query.peek() {
-                if *peeked_char != ',' {
+            if let Some(&peeked_char) = peekable_query.peek() {
+                if peeked_char != ',' {
                     break;
                 }
             }
@@ -426,22 +426,22 @@ impl Query {
     fn parse_field_name(peekable_query: &mut PeekableDeque<char>) -> Result<String, String> {
         let mut field_name = String::new();
 
-        if let Some(peeked_char) = peekable_query.peek() {
+        if let Some(&peeked_char) = peekable_query.peek() {
             // First char can't be a number
-            if !(*peeked_char).is_alphabetic() && *peeked_char != '_' && *peeked_char != '-' {
-                return Err(format!("Field name expected. They must start with letter, underscore or a minus, found: {}", *peeked_char));
+            if !(peeked_char).is_alphabetic() && peeked_char != '_' && peeked_char != '-' {
+                return Err(format!("Field name expected. They must start with letter, underscore or a minus, found: {}", peeked_char));
             }
-            field_name.push(*peeked_char);
+            field_name.push(peeked_char);
             peekable_query.next();
         } else {
             return Err("Field name expected. nothing found".to_string());
         }
 
-        while let Some(peeked_char) = peekable_query.peek() {
-            if !(*peeked_char).is_alphanumeric() && *peeked_char != '_' && *peeked_char != '-' {
+        while let Some(&peeked_char) = peekable_query.peek() {
+            if !(peeked_char).is_alphanumeric() && peeked_char != '_' && peeked_char != '-' {
                 break;
             }
-            field_name.push(*peeked_char);
+            field_name.push(peeked_char);
             peekable_query.next();
         }
 
@@ -457,11 +457,11 @@ impl Query {
         let mut matched = String::new();
 
         for expected_char in &mut keyword_chars {
-            if let Some(peeked_char) = peekable_query.peek() {
-                matched.push(*peeked_char);
+            if let Some(&peeked_char) = peekable_query.peek() {
+                matched.push(peeked_char);
 
                 let match_condition = if case_sensitive {
-                    *peeked_char == expected_char
+                    peeked_char == expected_char
                 } else {
                     peeked_char.to_ascii_lowercase() == expected_char.to_ascii_lowercase()
                 };
@@ -707,8 +707,8 @@ mod tests {
             Err(error) => return Err(error),
         }
 
-        if let Some(peeked_char) = peekable_query.peek() {
-            assert_eq!(' ', *peeked_char);
+        if let Some(&peeked_char) = peekable_query.peek() {
+            assert_eq!(' ', peeked_char);
         } else {
             panic!("Expected empty space, but got nothing!");
         }
@@ -727,8 +727,8 @@ mod tests {
             Err(error) => return Err(error),
         }
 
-        if let Some(peeked_char) = peekable_query.peek() {
-            assert_eq!(' ', *peeked_char);
+        if let Some(&peeked_char) = peekable_query.peek() {
+            assert_eq!(' ', peeked_char);
         } else {
             panic!("Expected empty space, but got nothing!");
         }
@@ -755,8 +755,8 @@ mod tests {
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
 
         Query::parse_whitespaces(&mut peekable_query);
-        if let Some(peeked_char) = peekable_query.peek() {
-            assert_eq!('a', *peeked_char);
+        if let Some(&peeked_char) = peekable_query.peek() {
+            assert_eq!('a', peeked_char);
         } else {
             panic!("Expected 'a' char, but got nothing!");
         }
@@ -768,8 +768,8 @@ mod tests {
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
 
         Query::parse_whitespaces(&mut peekable_query);
-        if let Some(peeked_char) = peekable_query.peek() {
-            assert_eq!('a', *peeked_char);
+        if let Some(&peeked_char) = peekable_query.peek() {
+            assert_eq!('a', peeked_char);
         } else {
             panic!("Expected 'a' char, but got nothing!");
         }
