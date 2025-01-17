@@ -58,8 +58,8 @@ impl FromStr for Operator {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         //Option<Self> {
         match Self::OPERATOR_MAP.get(s.to_uppercase().as_str()).cloned() {
-            Some(op) => return Ok(op),
-            None => return Err(format!("Unknown operator: {}", s)),
+            Some(op) => Ok(op),
+            None => Err(format!("Unknown operator: {}", s)),
         }
     }
 }
@@ -72,13 +72,18 @@ pub enum ExpressionElement {
     FieldName(String),
     FieldValue(FieldValue),
     Function(Function),
-    Tag(String), // TODO: remove
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Function {
     pub name: String,
     pub args: Vec<FieldValue>,
+}
+
+impl Function {
+    pub fn new(name: String, args: Vec<FieldValue>) -> Self {
+        Function { name, args }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -236,8 +241,12 @@ impl Query {
         Query::parse_whitespaces(peekable_query);
 
         let mut where_expression: Vec<ExpressionElement> = Vec::new();
-        where_expression.push(ExpressionElement::OpenedBracket);
-        // TODO: Implement WHERE parsing
+
+        match Query::parse_expression(peekable_query, &mut where_expression) {
+            Ok(()) => {}
+            Err(error) => return Err(error),
+        }
+
         Ok(where_expression)
     }
 
@@ -257,12 +266,8 @@ impl Query {
             field_name: "".to_string(),
             order_direction: OrderDirection::ASC,
         });
-        // TODO: Implement WHERE parsing
+        // TODO: Implement ORDER BY parsing
         Ok(order_by_fields)
-    }
-
-    fn parse_field_value(peekable_query: &mut PeekableDeque<char>) -> Result<FieldValue, String> {
-        Ok(FieldValue::String("".to_string()))
     }
 
     fn parse_expression(
@@ -331,13 +336,20 @@ impl Query {
         peekable_query: &mut PeekableDeque<char>,
         expression_elements: &mut Vec<ExpressionElement>,
     ) -> Result<(), String> {
-        match Query::parse_tag(peekable_query) {
-            // TODO: need to replace with generic parse element
-            Ok(el) => {
-                expression_elements.push(ExpressionElement::Tag(el)) // TODO: need to
-            }
-            // replace with generic element parsing
-            Err(error) => return Err(error),
+        // value -> function -> field
+        match Query::parse_field_value(peekable_query) {
+            Ok(fv) => expression_elements.push(ExpressionElement::FieldValue(fv)),
+            Err(_) => match Query::parse_function(peekable_query) {
+                Ok(func) => expression_elements.push(ExpressionElement::Function(func)),
+                Err(_) => match Query::parse_field_name(peekable_query) {
+                    Ok(field_name) => {
+                        expression_elements.push(ExpressionElement::FieldName(field_name))
+                    }
+                    Err(_) => {
+                        return Err("No FieldValue, Function, nor FieldName found!".to_string())
+                    }
+                },
+            },
         }
         Query::parse_whitespaces(peekable_query);
 
@@ -387,48 +399,54 @@ impl Query {
         Err("No operator".to_string())
     }
 
-    fn parse_tag(peekable_query: &mut PeekableDeque<char>) -> Result<String, String> {
+    fn parse_field_value(peekable_query: &mut PeekableDeque<char>) -> Result<FieldValue, String> {
+        match Query::parse_string(peekable_query) {
+            Ok(str) => return Ok(FieldValue::String(str)),
+            Err(_) => {}
+        }
+        // number
+        // bool
+
+        Err("No field value found!".to_string())
+    }
+
+    fn parse_string(peekable_query: &mut PeekableDeque<char>) -> Result<String, String> {
         if let Some(&peeked_char) = peekable_query.peek() {
-            if peeked_char != '#' {
-                return Err(format!("Expected a '#', but found: {}", peeked_char));
+            if peeked_char != '"' && peeked_char != '\'' {
+                return Err(format!(
+                    "Expected a quote symbol, but found: {}",
+                    peeked_char
+                ));
             }
         }
+        let opened_quote = *peekable_query.peek().unwrap();
         peekable_query.next();
 
-        let mut tag = String::new();
-
-        if let Some(&peeked_char) = peekable_query.peek() {
-            // First char can't be a number
-            if !(peeked_char).is_alphabetic() && peeked_char != '_' && peeked_char != '-' {
-                return Err(format!("Field name expected. They must start with letter, underscore or a minus, found: {}", peeked_char));
-            }
-            tag.push(peeked_char);
-            peekable_query.next();
-        } else {
-            return Err("Field name expected. nothing found".to_string());
-        }
+        let mut str = String::new();
 
         while let Some(&peeked_char) = peekable_query.peek() {
-            if !(peeked_char).is_alphanumeric()
-                && peeked_char != '_'
-                && peeked_char != '-'
-                && peeked_char != '/'
-            {
-                break;
+            if peeked_char == opened_quote {
+                peekable_query.next();
+                return Ok(str);
             }
-            tag.push(peeked_char);
+            str.push(peeked_char);
             peekable_query.next();
         }
 
-        Ok(tag)
+        Err(format!("Query ended before string ({}) was closed!", str))
+    }
+
+    fn parse_function(peekable_query: &mut PeekableDeque<char>) -> Result<Function, String> {
+        Err("error".to_string())
+        //Ok(Function::new("".to_string(), Vec::new()))
     }
 
     fn parse_field_name(peekable_query: &mut PeekableDeque<char>) -> Result<String, String> {
         let mut field_name = String::new();
 
         if let Some(&peeked_char) = peekable_query.peek() {
-            // First char can't be a number
-            if !(peeked_char).is_alphabetic() && peeked_char != '_' && peeked_char != '-' {
+            // First char can be letter or underscore
+            if !(peeked_char).is_alphabetic() && peeked_char != '_' {
                 return Err(format!("Field name expected. They must start with letter, underscore or a minus, found: {}", peeked_char));
             }
             field_name.push(peeked_char);
@@ -547,9 +565,93 @@ mod tests {
     #[test]
     fn parse_select() {}
 
-    #[ignore = "TODO: implement this test"]
     #[test]
-    fn parse_tag() {}
+    fn parse_string_without_opening_quote() -> Result<(), String> {
+        let query = "test' and field > 5".to_string();
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        if Query::parse_string(&mut peekable_query).is_ok() {
+            return Err("This should fail, because string is not closed".to_string());
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_string_without_closed_quote() -> Result<(), String> {
+        let query = "'test and field > 5".to_string();
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        if Query::parse_string(&mut peekable_query).is_ok() {
+            return Err("This should fail, because string is not closed".to_string());
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_string_with_mixed_quotes2() -> Result<(), String> {
+        let query = "\"test'".to_string();
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        if Query::parse_string(&mut peekable_query).is_ok() {
+            return Err("This should fail, because string is not closed".to_string());
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_string_with_mixed_quotes1() -> Result<(), String> {
+        let query = "'test\"".to_string();
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        if Query::parse_string(&mut peekable_query).is_ok() {
+            return Err("This should fail, because string is not closed".to_string());
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_string_with_single_quotes() -> Result<(), String> {
+        let query = "'test'".to_string();
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        match Query::parse_string(&mut peekable_query) {
+            Ok(str) => assert_eq!("test", str),
+            Err(error) => return Err(error),
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_string_with_double_quotes() -> Result<(), String> {
+        let query = "\"test\"".to_string();
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        match Query::parse_string(&mut peekable_query) {
+            Ok(str) => assert_eq!("test", str),
+            Err(error) => return Err(error),
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_valid_string_with_different_chars() -> Result<(), String> {
+        let str = "o oeuaoe 45646 ?$%^ ";
+        let query = format!("'{}'", str);
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        match Query::parse_string(&mut peekable_query) {
+            Ok(_str) => assert_eq!(str, _str),
+            Err(error) => return Err(error),
+        }
+
+        Ok(())
+    }
 
     #[test]
     fn test_parse_existing_operator_with_space() -> Result<(), String> {
@@ -560,6 +662,8 @@ mod tests {
             Ok(op) => assert_eq!(Operator::And, op),
             Err(error) => return Err(error),
         }
+
+        assert_eq!(' ', *peekable_query.peek().unwrap());
 
         Ok(())
     }
@@ -573,6 +677,8 @@ mod tests {
             Ok(op) => assert_eq!(Operator::And, op),
             Err(error) => return Err(error),
         }
+
+        assert_eq!(' ', *peekable_query.peek().unwrap());
 
         Ok(())
     }
