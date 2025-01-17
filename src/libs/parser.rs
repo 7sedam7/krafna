@@ -69,23 +69,19 @@ pub enum ExpressionElement {
     OpenedBracket,
     ClosedBracket,
     Operator(Operator),
-    Tag(String),
-    String(String),
-    Number(f64),
-    Bool(bool),
-}
-
-#[derive(Debug)]
-pub enum WhereExpressionElement {
-    OpenedBracket,
-    ClosedBracket,
     FieldName(String),
-    FieldValue,
-    OperatorAnd,
-    OperatorOr,
+    FieldValue(FieldValue),
+    Function(Function),
+    Tag(String), // TODO: remove
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone)]
+pub struct Function {
+    pub name: String,
+    pub args: Vec<FieldValue>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum FieldValue {
     String(String),
     Number(f64),
@@ -108,7 +104,7 @@ pub enum OrderDirection {
 pub struct Query {
     pub select_fields: Vec<String>,
     pub from_tables: Vec<ExpressionElement>,
-    pub where_expression: Vec<WhereExpressionElement>,
+    pub where_expression: Vec<ExpressionElement>,
     pub order_by_fields: Vec<OrderByFieldOption>,
 }
 
@@ -169,7 +165,7 @@ impl Query {
     pub fn new(
         select_fields: Vec<String>,
         from_tables: Vec<ExpressionElement>,
-        where_expression: Vec<WhereExpressionElement>,
+        where_expression: Vec<ExpressionElement>,
         order_by_fields: Vec<OrderByFieldOption>,
     ) -> Self {
         Query {
@@ -232,15 +228,15 @@ impl Query {
     // call only when you expect WHERE should happen
     fn parse_where(
         peekable_query: &mut PeekableDeque<char>,
-    ) -> Result<Vec<WhereExpressionElement>, String> {
+    ) -> Result<Vec<ExpressionElement>, String> {
         match Query::parse_keyword(peekable_query, "WHERE", false) {
             Ok(()) => {}
             Err(error) => return Err(error),
         }
         Query::parse_whitespaces(peekable_query);
 
-        let mut where_expression: Vec<WhereExpressionElement> = Vec::new();
-        where_expression.push(WhereExpressionElement::OpenedBracket);
+        let mut where_expression: Vec<ExpressionElement> = Vec::new();
+        where_expression.push(ExpressionElement::OpenedBracket);
         // TODO: Implement WHERE parsing
         Ok(where_expression)
     }
