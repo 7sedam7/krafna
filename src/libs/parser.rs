@@ -1,4 +1,5 @@
 use crate::libs::peekable_deque::PeekableDeque;
+use core::f64;
 use hashbrown::HashSet;
 use std::str::FromStr;
 
@@ -323,7 +324,7 @@ impl Query {
         peekable_query.next();
         Query::parse_whitespaces(peekable_query);
 
-        match Query::parse_operators(peekable_query) {
+        match Query::parse_operator(peekable_query) {
             Ok(op) => expression_elements.push(ExpressionElement::Operator(op)),
             Err(_) => return Ok(()),
         }
@@ -336,25 +337,17 @@ impl Query {
         peekable_query: &mut PeekableDeque<char>,
         expression_elements: &mut Vec<ExpressionElement>,
     ) -> Result<(), String> {
-        // value -> function -> field
-        match Query::parse_field_value(peekable_query) {
-            Ok(fv) => expression_elements.push(ExpressionElement::FieldValue(fv)),
-            Err(_) => match Query::parse_function(peekable_query) {
-                Ok(func) => expression_elements.push(ExpressionElement::Function(func)),
-                Err(_) => match Query::parse_field_name(peekable_query) {
-                    Ok(field_name) => {
-                        expression_elements.push(ExpressionElement::FieldName(field_name))
-                    }
-                    Err(_) => {
-                        return Err("No FieldValue, Function, nor FieldName found!".to_string())
-                    }
-                },
+        match Query::parse_bool_field_name_or_function(peekable_query) {
+            Ok(field_name_or_function) => expression_elements.push(field_name_or_function),
+            Err(_) => match Query::parse_field_value(peekable_query) {
+                Ok(fv) => expression_elements.push(ExpressionElement::FieldValue(fv)),
+                Err(_) => return Err("No FieldValue, Function, nor FieldName found!".to_string()),
             },
         }
         Query::parse_whitespaces(peekable_query);
 
         loop {
-            match Query::parse_operators(peekable_query) {
+            match Query::parse_operator(peekable_query) {
                 Ok(op) => expression_elements.push(ExpressionElement::Operator(op)),
                 Err(_) => return Ok(()),
             }
@@ -367,7 +360,7 @@ impl Query {
         }
     }
 
-    fn parse_operators(peekable_query: &mut PeekableDeque<char>) -> Result<Operator, String> {
+    fn parse_operator(peekable_query: &mut PeekableDeque<char>) -> Result<Operator, String> {
         let mut operator_candidates = Operator::strings_hash();
         let mut index = 0;
 
@@ -400,12 +393,15 @@ impl Query {
     }
 
     fn parse_field_value(peekable_query: &mut PeekableDeque<char>) -> Result<FieldValue, String> {
-        match Query::parse_string(peekable_query) {
-            Ok(str) => return Ok(FieldValue::String(str)),
-            Err(_) => {}
+        if let Ok(str) = Query::parse_string(peekable_query) {
+            return Ok(FieldValue::String(str));
         }
-        // number
-        // bool
+        if let Ok(num) = Query::parse_number(peekable_query) {
+            return Ok(FieldValue::Number(num));
+        }
+        if let Ok(bv) = Query::parse_bool(peekable_query) {
+            return Ok(FieldValue::Bool(bv));
+        }
 
         Err("No field value found!".to_string())
     }
@@ -436,7 +432,83 @@ impl Query {
         Err(format!("Query ended before string ({}) was closed!", str))
     }
 
-    fn parse_function(peekable_query: &mut PeekableDeque<char>) -> Result<Function, String> {
+    fn parse_number(peekable_query: &mut PeekableDeque<char>) -> Result<f64, String> {
+        let mut number = String::new();
+
+        if let Some(&peeked_char) = peekable_query.peek() {
+            // First char can be minus or a number
+            if !peeked_char.is_numeric() && peeked_char != '-' {
+                return Err(format!("Number can not start with {}!", peeked_char));
+            }
+            number.push(peeked_char);
+            peekable_query.next();
+        } else {
+            return Err("Number expected. nothing found".to_string());
+        }
+
+        // if first char was -, then next one needs to be a number
+        if number.chars().nth(0).unwrap() == '-' {
+            if let Some(&peeked_char) = peekable_query.peek() {
+                if !peeked_char.is_numeric() {
+                    return Err(format!("Number can not start with {}!", peeked_char));
+                }
+                number.push(peeked_char);
+                peekable_query.next();
+            } else {
+                return Err("Number expected. nothing found".to_string());
+            }
+        }
+
+        let mut has_decimal = false;
+        while let Some(&(mut peeked_char)) = peekable_query.peek() {
+            if peeked_char == '.' || peeked_char == ',' {
+                if has_decimal {
+                    return Err("Can not have multiple decimal signs".to_string());
+                }
+                has_decimal = true;
+                peeked_char = '.';
+            } else if !peeked_char.is_numeric() {
+                break;
+            }
+            number.push(peeked_char);
+            peekable_query.next();
+        }
+
+        number.parse::<f64>().map_err(|e| e.to_string())
+    }
+
+    fn parse_bool(peekable_query: &mut PeekableDeque<char>) -> Result<bool, String> {
+        Err("TODO: implement parse_bool".to_string())
+    }
+
+    fn parse_bool_field_name_or_function(
+        peekable_query: &mut PeekableDeque<char>,
+    ) -> Result<ExpressionElement, String> {
+        let field_name = match Query::parse_field_name(peekable_query) {
+            Ok(field_name) => field_name,
+            Err(_) => return Err("No Function, nor FieldName found!".to_string()),
+        };
+
+        if let Some(&peeked_char) = peekable_query.peek() {
+            if peeked_char == '(' {
+                match Query::parse_function(peekable_query, Some(field_name)) {
+                    Ok(func) => return Ok(ExpressionElement::Function(func)),
+                    Err(error) => return Err(error),
+                }
+            }
+        }
+
+        if let Ok(bool_value) = field_name.parse::<bool>() {
+            return Ok(ExpressionElement::FieldValue(FieldValue::Bool(bool_value)));
+        }
+
+        Ok(ExpressionElement::FieldName(field_name))
+    }
+
+    fn parse_function(
+        peekable_query: &mut PeekableDeque<char>,
+        func_name: Option<String>,
+    ) -> Result<Function, String> {
         Err("error".to_string())
         //Ok(Function::new("".to_string(), Vec::new()))
     }
@@ -446,7 +518,7 @@ impl Query {
 
         if let Some(&peeked_char) = peekable_query.peek() {
             // First char can be letter or underscore
-            if !(peeked_char).is_alphabetic() && peeked_char != '_' {
+            if !peeked_char.is_alphabetic() && peeked_char != '_' {
                 return Err(format!("Field name expected. They must start with letter, underscore or a minus, found: {}", peeked_char));
             }
             field_name.push(peeked_char);
@@ -456,7 +528,7 @@ impl Query {
         }
 
         while let Some(&peeked_char) = peekable_query.peek() {
-            if !(peeked_char).is_alphanumeric() && peeked_char != '_' && peeked_char != '-' {
+            if !peeked_char.is_alphanumeric() && peeked_char != '_' && peeked_char != '-' {
                 break;
             }
             field_name.push(peeked_char);
@@ -499,8 +571,8 @@ impl Query {
             }
         }
 
-        if let Some(c) = peekable_query.peek() {
-            if !(*c).is_whitespace() {
+        if let Some(&c) = peekable_query.peek() {
+            if !c.is_whitespace() {
                 return Err(format!(
                     "Expected emptyspace after {} keyward, but found: {}...",
                     keyword, c
@@ -512,8 +584,8 @@ impl Query {
 
     fn parse_whitespaces(peekable_query: &mut PeekableDeque<char>) {
         loop {
-            if let Some(c) = peekable_query.peek() {
-                if !(*c).is_whitespace() {
+            if let Some(&c) = peekable_query.peek() {
+                if !c.is_whitespace() {
                     return;
                 }
                 peekable_query.next();
@@ -528,26 +600,6 @@ impl Query {
 mod tests {
     use super::*;
     use core::panic;
-
-    #[test]
-    #[ignore = "TODO: implement this test"]
-    fn parse_from_operators() {}
-
-    #[test]
-    #[ignore = "TODO: implement this test"]
-    fn parse_no_bracket_expression() {}
-
-    #[ignore = "TODO: implement this test"]
-    #[test]
-    fn parse_bracket_expression() {}
-
-    #[ignore = "TODO: implement this test"]
-    #[test]
-    fn parse_expression() {}
-
-    #[ignore = "TODO: implement this test"]
-    #[test]
-    fn parse_field_value() {}
 
     #[ignore = "TODO: implement this test"]
     #[test]
@@ -565,8 +617,366 @@ mod tests {
     #[test]
     fn parse_select() {}
 
+    #[ignore = "TODO: implement this test"]
     #[test]
-    fn parse_string_without_opening_quote() -> Result<(), String> {
+    fn parse_bracket_expression() {}
+
+    #[ignore = "TODO: implement this test"]
+    #[test]
+    fn parse_expression() {}
+
+    #[ignore = "TODO: implement this test"]
+    #[test]
+    fn parse_field_value() {}
+
+    /////////////////////////////////////
+    // PARSE FIELD VALUE
+    /////////////////////////////////////
+    #[ignore = "TODO: implement bool parsing"]
+    #[test]
+    fn test_parse_field_value_when_bool() -> Result<(), String> {
+        let bool_value = false;
+        let query = format!("{} ", bool_value);
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        match Query::parse_field_value(&mut peekable_query) {
+            Ok(fv) => assert_eq!(FieldValue::Bool(bool_value), fv),
+            Err(error) => return Err(error),
+        }
+
+        assert_eq!(' ', *peekable_query.peek().unwrap());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_field_value_when_string() -> Result<(), String> {
+        let str = "test".to_string();
+        let query = format!("'{}' ", str);
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        match Query::parse_field_value(&mut peekable_query) {
+            Ok(fv) => assert_eq!(FieldValue::String(str), fv),
+            Err(error) => return Err(error),
+        }
+
+        assert_eq!(' ', *peekable_query.peek().unwrap());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_field_value_when_number() -> Result<(), String> {
+        let num: f64 = 541.0;
+        let query = format!("{} ", num);
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        match Query::parse_field_value(&mut peekable_query) {
+            Ok(fv) => assert_eq!(FieldValue::Number(num), fv),
+            Err(error) => return Err(error),
+        }
+
+        assert_eq!(' ', *peekable_query.peek().unwrap());
+
+        Ok(())
+    }
+
+    /////////////////////////////////////
+    // PARSE NO BRACKET EXPRESSION
+    /////////////////////////////////////
+    #[test]
+    fn test_parse_no_bracket_expression_when_field_name() -> Result<(), String> {
+        let field_name = "truea".to_string();
+        let query = format!("{} ", field_name);
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        let mut expression_elements: Vec<ExpressionElement> = Vec::new();
+
+        assert_eq!(
+            Ok(()),
+            Query::parse_no_bracket_expression(&mut peekable_query, &mut expression_elements)
+        );
+        assert_eq!(
+            vec![ExpressionElement::FieldName(field_name)],
+            expression_elements
+        );
+
+        Ok(())
+    }
+
+    #[ignore = "TODO: implement function parsing"]
+    #[test]
+    fn test_parse_no_bracket_expression_when_func() -> Result<(), String> {
+        let func_name = "true".to_string();
+        let query = format!("{}() ", func_name);
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        let mut expression_elements: Vec<ExpressionElement> = Vec::new();
+
+        assert_eq!(
+            Ok(()),
+            Query::parse_no_bracket_expression(&mut peekable_query, &mut expression_elements)
+        );
+        assert_eq!(
+            vec![ExpressionElement::Function(Function::new(
+                func_name,
+                Vec::new()
+            ))],
+            expression_elements
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_no_bracket_expression_when_bool() -> Result<(), String> {
+        let bool_value = false;
+        let query = format!("{} ", bool_value);
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        let mut expression_elements: Vec<ExpressionElement> = Vec::new();
+
+        assert_eq!(
+            Ok(()),
+            Query::parse_no_bracket_expression(&mut peekable_query, &mut expression_elements)
+        );
+        assert_eq!(
+            vec![ExpressionElement::FieldValue(FieldValue::Bool(bool_value))],
+            expression_elements
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_no_bracket_expression_when_string() -> Result<(), String> {
+        let str = "test".to_string();
+        let query = format!("'{}' ", str);
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        let mut expression_elements: Vec<ExpressionElement> = Vec::new();
+
+        assert_eq!(
+            Ok(()),
+            Query::parse_no_bracket_expression(&mut peekable_query, &mut expression_elements)
+        );
+        assert_eq!(
+            vec![ExpressionElement::FieldValue(FieldValue::String(str))],
+            expression_elements
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_no_bracket_expression_when_number() -> Result<(), String> {
+        let num: f64 = 541.0;
+        let query = format!("{} ", num);
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        let mut expression_elements: Vec<ExpressionElement> = Vec::new();
+
+        assert_eq!(
+            Ok(()),
+            Query::parse_no_bracket_expression(&mut peekable_query, &mut expression_elements)
+        );
+        assert_eq!(
+            vec![ExpressionElement::FieldValue(FieldValue::Number(num))],
+            expression_elements
+        );
+
+        Ok(())
+    }
+
+    /////////////////////////////////////
+    // PARSE BOOL FIELD NAME OR FUNCTION
+    /////////////////////////////////////
+    #[test]
+    fn test_parse_bool_field_name_or_function_when_field_name() -> Result<(), String> {
+        let field_name = "truea".to_string();
+        let query = format!("{} ", field_name);
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        match Query::parse_bool_field_name_or_function(&mut peekable_query) {
+            Ok(_field_name) => assert_eq!(ExpressionElement::FieldName(field_name), _field_name),
+            Err(error) => return Err(error),
+        }
+
+        assert_eq!(' ', *peekable_query.peek().unwrap());
+
+        Ok(())
+    }
+
+    #[ignore = "TODO: implement function parsing"]
+    #[test]
+    fn test_parse_bool_field_name_or_function_when_function() -> Result<(), String> {
+        let func_name = "true".to_string();
+        let query = format!("{}() ", func_name);
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        match Query::parse_bool_field_name_or_function(&mut peekable_query) {
+            Ok(_func) => assert_eq!(
+                ExpressionElement::Function(Function::new(func_name, Vec::new())),
+                _func
+            ),
+            Err(error) => return Err(error),
+        }
+
+        assert_eq!(' ', *peekable_query.peek().unwrap());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_bool_field_name_or_function_when_false() -> Result<(), String> {
+        let bool_value = false;
+        let query = format!("{} ", bool_value);
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        match Query::parse_bool_field_name_or_function(&mut peekable_query) {
+            Ok(_bool_value) => assert_eq!(
+                ExpressionElement::FieldValue(FieldValue::Bool(bool_value)),
+                _bool_value
+            ),
+            Err(error) => return Err(error),
+        }
+
+        assert_eq!(' ', *peekable_query.peek().unwrap());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_bool_field_name_or_function_when_true() -> Result<(), String> {
+        let bool_value = true;
+        let query = format!("{} ", bool_value);
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        match Query::parse_bool_field_name_or_function(&mut peekable_query) {
+            Ok(_bool_value) => assert_eq!(
+                ExpressionElement::FieldValue(FieldValue::Bool(bool_value)),
+                _bool_value
+            ),
+            Err(error) => return Err(error),
+        }
+
+        assert_eq!(' ', *peekable_query.peek().unwrap());
+
+        Ok(())
+    }
+
+    /////////////////////////////////////
+    // PARSE NUMBER
+    /////////////////////////////////////
+    #[test]
+    fn test_parse_invalid_decimal_number() -> Result<(), String> {
+        let query = "5.3.2".to_string();
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        if Query::parse_number(&mut peekable_query).is_ok() {
+            return Err("This should fail, because \"test\" is not a number".to_string());
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_invalid_negative_number() -> Result<(), String> {
+        let query = "-test".to_string();
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        if Query::parse_number(&mut peekable_query).is_ok() {
+            return Err("This should fail, because \"test\" is not a number".to_string());
+        }
+
+        assert_eq!('t', *peekable_query.peek().unwrap());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_invalid_number() -> Result<(), String> {
+        let query = "test".to_string();
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        if Query::parse_number(&mut peekable_query).is_ok() {
+            return Err("This should fail, because \"test\" is not a number".to_string());
+        }
+
+        assert_eq!('t', *peekable_query.peek().unwrap());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_decimal_number_with_comma() -> Result<(), String> {
+        let num: f64 = 543.21;
+        let query = "543,21a".to_string();
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        match Query::parse_number(&mut peekable_query) {
+            Ok(_num) => assert_eq!(num, _num),
+            Err(error) => return Err(error),
+        }
+
+        assert_eq!('a', *peekable_query.peek().unwrap());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_decimal_number_with_dot() -> Result<(), String> {
+        let num: f64 = 543.21;
+        let query = format!("{}a", num);
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        match Query::parse_number(&mut peekable_query) {
+            Ok(_num) => assert_eq!(num, _num),
+            Err(error) => return Err(error),
+        }
+
+        assert_eq!('a', *peekable_query.peek().unwrap());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_negative_number() -> Result<(), String> {
+        let num: f64 = -543.0;
+        let query = format!("{}a", num);
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        match Query::parse_number(&mut peekable_query) {
+            Ok(_num) => assert_eq!(num, _num),
+            Err(error) => return Err(error),
+        }
+
+        assert_eq!('a', *peekable_query.peek().unwrap());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_positive_number() -> Result<(), String> {
+        let num: f64 = 543.0;
+        let query = format!("{}a", num);
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        match Query::parse_number(&mut peekable_query) {
+            Ok(_num) => assert_eq!(num, _num),
+            Err(error) => return Err(error),
+        }
+
+        assert_eq!('a', *peekable_query.peek().unwrap());
+
+        Ok(())
+    }
+
+    /////////////////////////////////////
+    // PARSE STRING
+    /////////////////////////////////////
+    #[test]
+    fn test_parse_string_without_opening_quote() -> Result<(), String> {
         let query = "test' and field > 5".to_string();
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
 
@@ -578,7 +988,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_string_without_closed_quote() -> Result<(), String> {
+    fn test_parse_string_without_closed_quote() -> Result<(), String> {
         let query = "'test and field > 5".to_string();
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
 
@@ -590,7 +1000,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_string_with_mixed_quotes2() -> Result<(), String> {
+    fn test_parse_string_with_mixed_quotes2() -> Result<(), String> {
         let query = "\"test'".to_string();
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
 
@@ -602,7 +1012,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_string_with_mixed_quotes1() -> Result<(), String> {
+    fn test_parse_string_with_mixed_quotes1() -> Result<(), String> {
         let query = "'test\"".to_string();
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
 
@@ -614,7 +1024,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_string_with_single_quotes() -> Result<(), String> {
+    fn test_parse_string_with_single_quotes() -> Result<(), String> {
         let query = "'test'".to_string();
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
 
@@ -627,7 +1037,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_string_with_double_quotes() -> Result<(), String> {
+    fn test_parse_string_with_double_quotes() -> Result<(), String> {
         let query = "\"test\"".to_string();
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
 
@@ -640,7 +1050,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_valid_string_with_different_chars() -> Result<(), String> {
+    fn test_parse_valid_string_with_different_chars() -> Result<(), String> {
         let str = "o oeuaoe 45646 ?$%^ ";
         let query = format!("'{}'", str);
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
@@ -653,12 +1063,15 @@ mod tests {
         Ok(())
     }
 
+    /////////////////////////////////////
+    // PARSE OPERATOR
+    /////////////////////////////////////
     #[test]
     fn test_parse_existing_operator_with_space() -> Result<(), String> {
         let operator = "AND ".to_string();
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(operator.chars());
 
-        match Query::parse_operators(&mut peekable_query) {
+        match Query::parse_operator(&mut peekable_query) {
             Ok(op) => assert_eq!(Operator::And, op),
             Err(error) => return Err(error),
         }
@@ -673,7 +1086,7 @@ mod tests {
         let operator = "and ".to_string();
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(operator.chars());
 
-        match Query::parse_operators(&mut peekable_query) {
+        match Query::parse_operator(&mut peekable_query) {
             Ok(op) => assert_eq!(Operator::And, op),
             Err(error) => return Err(error),
         }
@@ -688,7 +1101,7 @@ mod tests {
         let operator = "<=".to_string();
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(operator.chars());
 
-        match Query::parse_operators(&mut peekable_query) {
+        match Query::parse_operator(&mut peekable_query) {
             Ok(op) => assert_eq!(Operator::Lte, op),
             Err(error) => return Err(error),
         }
@@ -701,7 +1114,7 @@ mod tests {
         let operator = "AND".to_string();
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(operator.chars());
 
-        match Query::parse_operators(&mut peekable_query) {
+        match Query::parse_operator(&mut peekable_query) {
             Ok(op) => assert_eq!(Operator::And, op),
             Err(error) => return Err(error),
         }
@@ -714,7 +1127,7 @@ mod tests {
         let operator = "ANDN".to_string();
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(operator.chars());
 
-        match Query::parse_operators(&mut peekable_query) {
+        match Query::parse_operator(&mut peekable_query) {
             Ok(op) => assert_eq!(Operator::And, op),
             Err(error) => return Err(error),
         }
@@ -729,7 +1142,7 @@ mod tests {
         let operator = "A ".to_string();
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(operator.chars());
 
-        if Query::parse_operators(&mut peekable_query).is_ok() {
+        if Query::parse_operator(&mut peekable_query).is_ok() {
             return Err("It should fail since there is no operator ANN!".to_string());
         }
 
@@ -741,7 +1154,7 @@ mod tests {
         let operator = "A".to_string();
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(operator.chars());
 
-        if Query::parse_operators(&mut peekable_query).is_ok() {
+        if Query::parse_operator(&mut peekable_query).is_ok() {
             return Err("It should fail since there is no operator ANN!".to_string());
         }
 
@@ -753,7 +1166,7 @@ mod tests {
         let operator = "ANN".to_string();
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(operator.chars());
 
-        if Query::parse_operators(&mut peekable_query).is_ok() {
+        if Query::parse_operator(&mut peekable_query).is_ok() {
             return Err("It should fail since there is no operator ANN!".to_string());
         }
 
@@ -765,7 +1178,7 @@ mod tests {
         let operator = "NAN".to_string();
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(operator.chars());
 
-        if Query::parse_operators(&mut peekable_query).is_ok() {
+        if Query::parse_operator(&mut peekable_query).is_ok() {
             return Err("It should fail since there is no operator ANN!".to_string());
         }
 
@@ -774,6 +1187,9 @@ mod tests {
         Ok(())
     }
 
+    /////////////////////////////////////
+    // PARSE FIELD NAME
+    /////////////////////////////////////
     #[test]
     fn test_parse_field_name_first_char_num() -> Result<(), String> {
         let field_name = "5test".to_string();
@@ -786,6 +1202,9 @@ mod tests {
         Ok(())
     }
 
+    /////////////////////////////////////
+    // PARSE KEYWORD
+    /////////////////////////////////////
     #[test]
     fn test_parse_keyword_case_sensitive() -> Result<(), String> {
         let query = "SeLeCt ".to_string();
@@ -798,6 +1217,8 @@ mod tests {
                     .to_string(),
             );
         }
+
+        assert_eq!('e', *peekable_query.peek().unwrap());
 
         Ok(())
     }
@@ -813,11 +1234,7 @@ mod tests {
             Err(error) => return Err(error),
         }
 
-        if let Some(&peeked_char) = peekable_query.peek() {
-            assert_eq!(' ', peeked_char);
-        } else {
-            panic!("Expected empty space, but got nothing!");
-        }
+        assert_eq!(' ', *peekable_query.peek().unwrap());
 
         Ok(())
     }
@@ -833,11 +1250,7 @@ mod tests {
             Err(error) => return Err(error),
         }
 
-        if let Some(&peeked_char) = peekable_query.peek() {
-            assert_eq!(' ', peeked_char);
-        } else {
-            panic!("Expected empty space, but got nothing!");
-        }
+        assert_eq!(' ', *peekable_query.peek().unwrap());
 
         Ok(())
     }
@@ -855,6 +1268,9 @@ mod tests {
         Ok(())
     }
 
+    /////////////////////////////////////
+    // PARSE WHITESPACE
+    /////////////////////////////////////
     #[test]
     fn test_parse_whitespaces_skip_whitspace() {
         let query = "  \t  \t\t\n  \t\n\n  a".to_string();
