@@ -80,11 +80,17 @@ pub enum ExpressionElement {
 #[derive(Debug, PartialEq, Clone)]
 pub struct Function {
     pub name: String,
-    pub args: Vec<FieldValue>,
+    pub args: Vec<FunctionArg>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum FunctionArg {
+    FieldName(String),
+    FieldValue(FieldValue),
 }
 
 impl Function {
-    pub fn new(name: String, args: Vec<FieldValue>) -> Self {
+    pub fn new(name: String, args: Vec<FunctionArg>) -> Self {
         Function { name, args }
     }
 }
@@ -509,10 +515,51 @@ impl Query {
 
     fn parse_function(
         peekable_query: &mut PeekableDeque<char>,
-        func_name: Option<String>,
+        _func_name: Option<String>,
     ) -> Result<Function, String> {
-        Err("error".to_string())
-        //Ok(Function::new("".to_string(), Vec::new()))
+        let func_name = match _func_name {
+            Some(_fn) => _fn,
+            None => {
+                // parse it
+                match Query::parse_field_name(peekable_query) {
+                    Ok(field_name) => field_name,
+                    Err(error) => return Err(error),
+                }
+            }
+        };
+
+        let mut args = Vec::new();
+
+        if let Some(&peeked_char) = peekable_query.peek() {
+            if peeked_char == '(' {
+                peekable_query.next();
+            } else {
+                return Err(format!("Expected '(', but found {}", peeked_char));
+            }
+        } else {
+            return Err("Expected '(', but found nothing".to_string());
+        }
+
+        loop {
+            Query::parse_whitespaces(peekable_query);
+
+            if let Some(&peeked_char) = peekable_query.peek() {
+                if peeked_char == ')' {
+                    peekable_query.next();
+                    break;
+                }
+            }
+
+            // TODO: implement field name parsing as well
+            match Query::parse_field_value(peekable_query) {
+                Ok(fv) => args.push(FunctionArg::FieldValue(fv)),
+                Err(error) => return Err(error),
+            }
+
+            // TODO: implement comma parsing for multiple arguments
+        }
+
+        Ok(Function::new(func_name, args))
     }
 
     fn parse_field_name(peekable_query: &mut PeekableDeque<char>) -> Result<String, String> {
@@ -627,9 +674,117 @@ mod tests {
     #[test]
     fn parse_expression() {}
 
-    #[ignore = "TODO: implement this test"]
+    /////////////////////////////////////
+    // PARSE FUNCTION
+    /////////////////////////////////////
+    #[ignore = "TODO: implement bool parsing, and comma parsing"]
     #[test]
-    fn parse_field_value() {}
+    fn test_parse_function_with_name_multiple_args() -> Result<(), String> {
+        let func_name = "test".to_string();
+
+        let arg1: f64 = 5.5;
+        let arg2_str = "some str".to_string();
+        let arg2 = format!("'{}'", arg2_str);
+        let arg3 = true;
+
+        let query = format!("{}({}, {}, {}) ", func_name, arg1, arg2, arg3);
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        match Query::parse_function(&mut peekable_query, None) {
+            Ok(func) => assert_eq!(
+                Function::new(
+                    func_name,
+                    vec![
+                        FunctionArg::FieldValue(FieldValue::Number(arg1)),
+                        FunctionArg::FieldValue(FieldValue::String(arg2_str)),
+                        FunctionArg::FieldValue(FieldValue::Bool(arg3))
+                    ]
+                ),
+                func
+            ),
+            Err(error) => return Err(error),
+        }
+
+        assert_eq!(' ', *peekable_query.peek().unwrap());
+
+        Ok(())
+    }
+
+    #[ignore = "TODO: implement field name parsing in function"]
+    #[test]
+    fn test_parse_function_with_name_one_fn_args() -> Result<(), String> {
+        let func_name = "test".to_string();
+        let arg1 = "field".to_string();
+        let query = format!("{}({}) ", func_name, arg1);
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        match Query::parse_function(&mut peekable_query, None) {
+            Ok(func) => assert_eq!(
+                Function::new(func_name, vec![FunctionArg::FieldName(arg1)]),
+                func
+            ),
+            Err(error) => return Err(error),
+        }
+
+        assert_eq!(' ', *peekable_query.peek().unwrap());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_function_with_name_one_fv_args() -> Result<(), String> {
+        let func_name = "test".to_string();
+        let arg1: f64 = 5.5;
+        let query = format!("{}({}) ", func_name, arg1);
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        match Query::parse_function(&mut peekable_query, None) {
+            Ok(func) => assert_eq!(
+                Function::new(
+                    func_name,
+                    vec![FunctionArg::FieldValue(FieldValue::Number(arg1))]
+                ),
+                func
+            ),
+            Err(error) => return Err(error),
+        }
+
+        assert_eq!(' ', *peekable_query.peek().unwrap());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_function_without_name_no_args() -> Result<(), String> {
+        let func_name = "test".to_string();
+        let query = "() ".to_string();
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        match Query::parse_function(&mut peekable_query, Some(func_name.clone())) {
+            Ok(func) => assert_eq!(Function::new(func_name, Vec::new()), func),
+            Err(error) => return Err(error),
+        }
+
+        assert_eq!(' ', *peekable_query.peek().unwrap());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_function_with_name_no_args() -> Result<(), String> {
+        let func_name = "test".to_string();
+        let query = format!("{}() ", func_name);
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        match Query::parse_function(&mut peekable_query, None) {
+            Ok(func) => assert_eq!(Function::new(func_name, Vec::new()), func),
+            Err(error) => return Err(error),
+        }
+
+        assert_eq!(' ', *peekable_query.peek().unwrap());
+
+        Ok(())
+    }
 
     /////////////////////////////////////
     // PARSE FIELD VALUE
@@ -731,7 +886,6 @@ mod tests {
         Ok(())
     }
 
-    #[ignore = "TODO: implement function parsing"]
     #[test]
     fn test_parse_no_bracket_expression_when_func() -> Result<(), String> {
         let func_name = "true".to_string();
@@ -834,7 +988,6 @@ mod tests {
         Ok(())
     }
 
-    #[ignore = "TODO: implement function parsing"]
     #[test]
     fn test_parse_bool_field_name_or_function_when_function() -> Result<(), String> {
         let func_name = "true".to_string();
