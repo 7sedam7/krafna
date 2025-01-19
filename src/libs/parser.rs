@@ -468,13 +468,12 @@ impl Query {
         }
 
         let mut has_decimal = false;
-        while let Some(&(mut peeked_char)) = peekable_query.peek() {
-            if peeked_char == '.' || peeked_char == ',' {
+        while let Some(&peeked_char) = peekable_query.peek() {
+            if peeked_char == '.' {
                 if has_decimal {
                     return Err("Can not have multiple decimal signs".to_string());
                 }
                 has_decimal = true;
-                peeked_char = '.';
             } else if !peeked_char.is_numeric() {
                 break;
             }
@@ -540,23 +539,48 @@ impl Query {
             return Err("Expected '(', but found nothing".to_string());
         }
 
+        let mut found_comma = false;
         loop {
             Query::parse_whitespaces(peekable_query);
 
+            println!("bla bla1 |{}|", *peekable_query.peek().unwrap());
             if let Some(&peeked_char) = peekable_query.peek() {
                 if peeked_char == ')' {
+                    if found_comma {
+                        println!("bla bla");
+                        return Err("Can't have ')' after ','!".to_string());
+                    }
                     peekable_query.next();
                     break;
+                } else if !found_comma && !args.is_empty() {
+                    return Err(format!("Expected ',' or ')', but found {}", peeked_char));
                 }
             }
 
-            // TODO: implement field name parsing as well
-            match Query::parse_field_value(peekable_query) {
-                Ok(fv) => args.push(FunctionArg::FieldValue(fv)),
-                Err(error) => return Err(error),
-            }
+            // Try parse Bool or Field name, if not then filed value
+            match Query::parse_field_name(peekable_query) {
+                Ok(field_name) => {
+                    if let Ok(bool_value) = field_name.parse::<bool>() {
+                        args.push(FunctionArg::FieldValue(FieldValue::Bool(bool_value)));
+                    } else {
+                        args.push(FunctionArg::FieldName(field_name));
+                    }
+                }
+                Err(_) => match Query::parse_field_value(peekable_query) {
+                    Ok(fv) => args.push(FunctionArg::FieldValue(fv)),
+                    Err(error) => return Err(error),
+                },
+            };
 
-            // TODO: implement comma parsing for multiple arguments
+            Query::parse_whitespaces(peekable_query);
+
+            found_comma = false;
+            if let Some(&peeked_char) = peekable_query.peek() {
+                if peeked_char == ',' {
+                    found_comma = true;
+                    peekable_query.next();
+                }
+            }
         }
 
         Ok(Function::new(func_name, args))
@@ -677,7 +701,54 @@ mod tests {
     /////////////////////////////////////
     // PARSE FUNCTION
     /////////////////////////////////////
-    #[ignore = "TODO: implement bool parsing, and comma parsing"]
+    #[test]
+    fn test_parse_function_without_comma() -> Result<(), String> {
+        let func_name = "test".to_string();
+        let arg1: f64 = 5.5;
+        let arg2 = true;
+        let query = format!("{}({} {}) ", func_name, arg1, arg2);
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        if Query::parse_function(&mut peekable_query, None).is_ok() {
+            return Err("It should fail due to trailing comma!".to_string());
+        }
+
+        assert_eq!('t', *peekable_query.peek().unwrap());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_function_with_trailing_comma() -> Result<(), String> {
+        let func_name = "test".to_string();
+        let arg1: f64 = 5.5;
+        let query = format!("{}({},) ", func_name, arg1);
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        if Query::parse_function(&mut peekable_query, None).is_ok() {
+            return Err("It should fail due to trailing comma!".to_string());
+        }
+
+        assert_eq!(')', *peekable_query.peek().unwrap());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_function_with_comma_after_open_bracket() -> Result<(), String> {
+        let func_name = "test".to_string();
+        let query = format!("{}(,) ", func_name);
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        if Query::parse_function(&mut peekable_query, None).is_ok() {
+            return Err("It should fail due to trailing comma!".to_string());
+        }
+
+        assert_eq!(',', *peekable_query.peek().unwrap());
+
+        Ok(())
+    }
+
     #[test]
     fn test_parse_function_with_name_multiple_args() -> Result<(), String> {
         let func_name = "test".to_string();
@@ -687,7 +758,7 @@ mod tests {
         let arg2 = format!("'{}'", arg2_str);
         let arg3 = true;
 
-        let query = format!("{}({}, {}, {}) ", func_name, arg1, arg2, arg3);
+        let query = format!("{}({}  , {},{}) ", func_name, arg1, arg2, arg3);
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
 
         match Query::parse_function(&mut peekable_query, None) {
@@ -710,7 +781,6 @@ mod tests {
         Ok(())
     }
 
-    #[ignore = "TODO: implement field name parsing in function"]
     #[test]
     fn test_parse_function_with_name_one_fn_args() -> Result<(), String> {
         let func_name = "test".to_string();
@@ -732,17 +802,63 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_function_with_name_one_fv_args() -> Result<(), String> {
+    fn test_parse_function_with_name_one_bool_arg() -> Result<(), String> {
         let func_name = "test".to_string();
-        let arg1: f64 = 5.5;
-        let query = format!("{}({}) ", func_name, arg1);
+        let arg = true;
+        let query = format!("{}({}) ", func_name, arg);
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
 
         match Query::parse_function(&mut peekable_query, None) {
             Ok(func) => assert_eq!(
                 Function::new(
                     func_name,
-                    vec![FunctionArg::FieldValue(FieldValue::Number(arg1))]
+                    vec![FunctionArg::FieldValue(FieldValue::Bool(arg))]
+                ),
+                func
+            ),
+            Err(error) => return Err(error),
+        }
+
+        assert_eq!(' ', *peekable_query.peek().unwrap());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_function_with_name_one_str_arg() -> Result<(), String> {
+        let func_name = "test".to_string();
+        let arg = "kifla".to_string();
+        let query = format!("{}('{}') ", func_name, arg);
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        match Query::parse_function(&mut peekable_query, None) {
+            Ok(func) => assert_eq!(
+                Function::new(
+                    func_name,
+                    vec![FunctionArg::FieldValue(FieldValue::String(arg))]
+                ),
+                func
+            ),
+            Err(error) => return Err(error),
+        }
+
+        assert_eq!(' ', *peekable_query.peek().unwrap());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_function_with_name_one_num_arg() -> Result<(), String> {
+        let func_name = "test".to_string();
+        let arg: f64 = 5.5;
+        let query = format!("{}({}) ", func_name, arg);
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        match Query::parse_function(&mut peekable_query, None) {
+            Ok(func) => assert_eq!(
+                Function::new(
+                    func_name,
+                    vec![FunctionArg::FieldValue(FieldValue::Number(arg))]
                 ),
                 func
             ),
@@ -1090,8 +1206,8 @@ mod tests {
 
     #[test]
     fn test_parse_decimal_number_with_comma() -> Result<(), String> {
-        let num: f64 = 543.21;
-        let query = "543,21a".to_string();
+        let num: f64 = 543.0;
+        let query = format!("{},21a", num);
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
 
         match Query::parse_number(&mut peekable_query) {
@@ -1099,7 +1215,7 @@ mod tests {
             Err(error) => return Err(error),
         }
 
-        assert_eq!('a', *peekable_query.peek().unwrap());
+        assert_eq!(',', *peekable_query.peek().unwrap());
 
         Ok(())
     }
