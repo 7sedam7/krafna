@@ -14,6 +14,7 @@ pub enum Operator {
     Gte,
     Eq,
     Neq,
+    // Like,
     Plus,
     Minus,
     Multiply,
@@ -33,6 +34,7 @@ impl Operator {
         ">=" => Operator::Gte,
         "==" => Operator::Eq,
         "!=" => Operator::Neq,
+        //"LIKE" => Operator::Like,
         "+" => Operator::Plus,
         "-" => Operator::Minus,
         "*" => Operator::Multiply,
@@ -684,6 +686,31 @@ mod tests {
     /////////////////////////////////////
     // PARSE NO BRACKET EXPRESSION
     /////////////////////////////////////
+    #[test]
+    fn test_parse_no_bracket_expression_with_operator() -> Result<(), String> {
+        let field_name = "kifla".to_string();
+        let bool_value = false;
+        let query = format!("{} and {}", field_name, bool_value);
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        let mut expression_elements: Vec<ExpressionElement> = Vec::new();
+
+        assert_eq!(
+            Ok(()),
+            Query::parse_no_bracket_expression(&mut peekable_query, &mut expression_elements)
+        );
+        assert_eq!(
+            vec![
+                ExpressionElement::FieldName(field_name),
+                ExpressionElement::Operator(Operator::And),
+                ExpressionElement::FieldValue(FieldValue::Bool(bool_value))
+            ],
+            expression_elements
+        );
+
+        Ok(())
+    }
+
     #[test]
     fn test_parse_no_bracket_expression_when_field_name() -> Result<(), String> {
         let field_name = "truea".to_string();
