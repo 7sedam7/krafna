@@ -2,7 +2,18 @@ use krafna::libs::parser::{ExpressionElement, FieldValue, Function, FunctionArg,
 use krafna::Query;
 
 #[test]
-fn test_complex_query_parsing_without_whitespace() -> Result<(), String> {
+fn test_complex_query_parsing_from_without_whitespace() -> Result<(), String> {
+    let query = "SELECT field1, field2 FROMFRONTMATTER_INFO('~/folder') where (tag1 and  (tag2 or tag3)+tag4  )";
+
+    if query.parse::<Query>().is_ok() {
+        return Err("It should fail, because there is no whitespace before whgere!".to_string());
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_complex_query_parsing_where_without_whitespace() -> Result<(), String> {
     let query = "SELECT field1, field2 FROM FRONTMATTER_INFO('~/folder')where (tag1 and  (tag2 or tag3)+tag4  )";
 
     if query.parse::<Query>().is_ok() {
