@@ -117,7 +117,7 @@ pub enum OrderDirection {
 #[derive(Debug)]
 pub struct Query {
     pub select_fields: Vec<String>,
-    pub from_tables: Vec<ExpressionElement>,
+    pub from_function: Function,
     pub where_expression: Vec<ExpressionElement>,
     pub order_by_fields: Vec<OrderByFieldOption>,
 }
@@ -133,10 +133,17 @@ impl FromStr for Query {
             Err(error) => return Err(format!("Error: {}, Query: {:?}", error, peekable_query)),
         };
 
-        let from_tables = match Query::parse_from(&mut peekable_query) {
+        let from_function = match Query::parse_from(&mut peekable_query) {
             Ok(ft) => ft,
             Err(error) => return Err(format!("Error: {}, Query: {:?}", error, peekable_query)),
         };
+
+        if let Some(&peeked_char) = peekable_query.peek() {
+            if !peeked_char.is_whitespace() {
+                return Err(format!("Expected whitespace, but found {}", peeked_char));
+            }
+        }
+        Query::parse_whitespaces(&mut peekable_query);
 
         let mut where_expression = Vec::new();
         if let Some(&peeked_char) = peekable_query.peek() {
@@ -168,7 +175,7 @@ impl FromStr for Query {
 
         Ok(Query::new(
             select_fields,
-            from_tables,
+            from_function,
             where_expression,
             order_by_fields,
         ))
@@ -178,13 +185,13 @@ impl FromStr for Query {
 impl Query {
     pub fn new(
         select_fields: Vec<String>,
-        from_tables: Vec<ExpressionElement>,
+        from_tables: Function,
         where_expression: Vec<ExpressionElement>,
         order_by_fields: Vec<OrderByFieldOption>,
     ) -> Self {
         Query {
             select_fields,
-            from_tables,
+            from_function: from_tables,
             where_expression,
             order_by_fields,
         }
@@ -220,23 +227,15 @@ impl Query {
         Ok(select_fields)
     }
 
-    fn parse_from(
-        peekable_query: &mut PeekableDeque<char>,
-    ) -> Result<Vec<ExpressionElement>, String> {
+    fn parse_from(peekable_query: &mut PeekableDeque<char>) -> Result<Function, String> {
         match Query::parse_keyword(peekable_query, "FROM", false) {
             Ok(()) => {}
             Err(error) => return Err(error),
         }
 
         Query::parse_whitespaces(peekable_query);
-        let mut from_expression: Vec<ExpressionElement> = Vec::new();
 
-        match Query::parse_expression(peekable_query, &mut from_expression) {
-            Ok(()) => {}
-            Err(error) => return Err(error),
-        }
-
-        Ok(from_expression)
+        Query::parse_function(peekable_query, None)
     }
 
     // call only when you expect WHERE should happen
@@ -543,11 +542,9 @@ impl Query {
         loop {
             Query::parse_whitespaces(peekable_query);
 
-            println!("bla bla1 |{}|", *peekable_query.peek().unwrap());
             if let Some(&peeked_char) = peekable_query.peek() {
                 if peeked_char == ')' {
                     if found_comma {
-                        println!("bla bla");
                         return Err("Can't have ')' after ','!".to_string());
                     }
                     peekable_query.next();
@@ -1502,6 +1499,23 @@ mod tests {
     // PARSE KEYWORD
     /////////////////////////////////////
     #[test]
+    fn test_parse_keyword_without_whitespace() -> Result<(), String> {
+        let keyword = "SELECT".to_string();
+        let query = format!("{}bla", keyword);
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        if Query::parse_keyword(&mut peekable_query, &keyword, true).is_ok() {
+            return Err(
+                "It should fail since there whitespace is expected after keyword!".to_string(),
+            );
+        }
+
+        assert_eq!('b', *peekable_query.peek().unwrap());
+
+        Ok(())
+    }
+
+    #[test]
     fn test_parse_keyword_case_sensitive() -> Result<(), String> {
         let query = "SeLeCt ".to_string();
         let keyword = "SELECT".to_string();
@@ -1521,8 +1535,8 @@ mod tests {
 
     #[test]
     fn test_parse_keyword_exact_case_sensitive() -> Result<(), String> {
-        let query = "SeLeCt ".to_string();
         let keyword = "SeLeCt".to_string();
+        let query = format!("{} ", keyword);
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
 
         match Query::parse_keyword(&mut peekable_query, &keyword, true) {
@@ -1553,8 +1567,8 @@ mod tests {
 
     #[test]
     fn test_parse_keyword_start_with_whitespace() -> Result<(), String> {
-        let query = "  SELECT".to_string();
         let keyword = "SELECT".to_string();
+        let query = format!("   {}", keyword);
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
 
         if let Ok(()) = Query::parse_keyword(&mut peekable_query, &keyword, false) {
