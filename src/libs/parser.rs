@@ -1,7 +1,7 @@
 use crate::libs::peekable_deque::PeekableDeque;
 use core::f64;
 use hashbrown::HashSet;
-use std::str::FromStr;
+use std::{str::FromStr, task::Wake};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Operator {
@@ -102,13 +102,22 @@ pub enum FieldValue {
     Bool(bool),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct OrderByFieldOption {
     pub field_name: String,
     pub order_direction: OrderDirection,
 }
 
-#[derive(Debug)]
+impl OrderByFieldOption {
+    pub fn new(field_name: String, order_direction: OrderDirection) -> Self {
+        OrderByFieldOption {
+            field_name,
+            order_direction,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
 pub enum OrderDirection {
     ASC,
     DESC,
@@ -138,11 +147,7 @@ impl FromStr for Query {
             Err(error) => return Err(format!("Error: {}, Query: {:?}", error, peekable_query)),
         };
 
-        if let Some(&peeked_char) = peekable_query.peek() {
-            if !peeked_char.is_whitespace() {
-                return Err(format!("Expected whitespace, but found {}", peeked_char));
-            }
-        }
+        Query::parse_mandatory_whitespace(&mut peekable_query)?;
         Query::parse_whitespaces(&mut peekable_query);
 
         let mut where_expression = Vec::new();
@@ -157,9 +162,16 @@ impl FromStr for Query {
             }
         }
 
+        Query::parse_whitespaces(&mut peekable_query);
+
         let mut order_by_fields = Vec::new();
         if let Some(&peeked_char) = peekable_query.peek() {
             if peeked_char == 'o' || peeked_char == 'O' {
+                //if !where_expression.is_empty() {
+                //    Query::parse_mandatory_whitespace(&mut peekable_query)?;
+                //    Query::parse_whitespaces(&mut peekable_query);
+                //}
+
                 order_by_fields = match Query::parse_order_by(&mut peekable_query) {
                     Ok(ob) => ob,
                     Err(error) => {
@@ -202,6 +214,7 @@ impl Query {
             Ok(()) => {}
             Err(error) => return Err(error),
         }
+        Query::parse_mandatory_whitespace(peekable_query)?;
 
         let mut select_fields: Vec<String> = Vec::new();
 
@@ -233,6 +246,7 @@ impl Query {
             Err(error) => return Err(error),
         }
 
+        Query::parse_mandatory_whitespace(peekable_query)?;
         Query::parse_whitespaces(peekable_query);
 
         Query::parse_function(peekable_query, None)
@@ -246,6 +260,7 @@ impl Query {
             Ok(()) => {}
             Err(error) => return Err(error),
         }
+        Query::parse_mandatory_whitespace(peekable_query)?;
         Query::parse_whitespaces(peekable_query);
 
         let mut where_expression: Vec<ExpressionElement> = Vec::new();
@@ -266,16 +281,42 @@ impl Query {
             Ok(()) => {}
             Err(error) => return Err(error),
         }
+        Query::parse_mandatory_whitespace(peekable_query)?;
 
-        Query::parse_whitespaces(peekable_query);
+        let mut order_by_options = Vec::new();
 
-        let mut order_by_fields: Vec<OrderByFieldOption> = Vec::new();
-        order_by_fields.push(OrderByFieldOption {
-            field_name: "".to_string(),
-            order_direction: OrderDirection::ASC,
-        });
+        loop {
+            Query::parse_whitespaces(peekable_query);
+
+            let field_name = match Query::parse_field_name(peekable_query) {
+                Ok(field_name) => field_name,
+                Err(error) => return Err(error),
+            };
+            Query::parse_whitespaces(peekable_query);
+
+            let mut order_direction = OrderDirection::ASC;
+            if let Some(&peeked_char) = peekable_query.peek() {
+                if peeked_char != ',' {
+                    match Query::parse_sort_direction(peekable_query) {
+                        Ok(od) => order_direction = od,
+                        Err(error) => return Err(error),
+                    }
+                }
+            }
+            order_by_options.push(OrderByFieldOption::new(field_name, order_direction));
+
+            if let Some(&peeked_char) = peekable_query.peek() {
+                if peeked_char != ',' {
+                    break;
+                }
+                peekable_query.next();
+            } else {
+                break;
+            }
+        }
+
         // TODO: Implement ORDER BY parsing
-        Ok(order_by_fields)
+        Ok(order_by_options)
     }
 
     fn parse_expression(
@@ -331,7 +372,7 @@ impl Query {
         peekable_query.next();
         Query::parse_whitespaces(peekable_query);
 
-        match Query::parse_operator(peekable_query) {
+        match Query::try_parse_operator(peekable_query) {
             Ok(op) => expression_elements.push(ExpressionElement::Operator(op)),
             Err(_) => return Ok(()),
         }
@@ -354,7 +395,7 @@ impl Query {
         Query::parse_whitespaces(peekable_query);
 
         loop {
-            match Query::parse_operator(peekable_query) {
+            match Query::try_parse_operator(peekable_query) {
                 Ok(op) => expression_elements.push(ExpressionElement::Operator(op)),
                 Err(_) => return Ok(()),
             }
@@ -367,36 +408,38 @@ impl Query {
         }
     }
 
-    fn parse_operator(peekable_query: &mut PeekableDeque<char>) -> Result<Operator, String> {
-        let mut operator_candidates = Operator::strings_hash();
-        let mut index = 0;
+    fn try_parse_operator(peekable_query: &mut PeekableDeque<char>) -> Result<Operator, String> {
+        if let Some(&peeked_char) = peekable_query.peek() {
+            if !Operator::get_operator_first_chars().contains(peeked_char.to_ascii_uppercase()) {
+                return Err(format!("No operator starts with {}", peeked_char));
+            }
+        }
+
+        let mut potential_opeartor = String::new();
+        let mut operator_candidate = None;
 
         while let Some(&peeked_char) = peekable_query.peek() {
-            operator_candidates.retain(|op| {
-                op.len() > index && op.chars().nth(index) == Some(peeked_char.to_ascii_uppercase())
-            });
+            potential_opeartor.push(peeked_char);
 
-            if operator_candidates.len() == 1 {
-                let op = operator_candidates
-                    .iter()
-                    .next()
-                    .ok_or("Expected one operator but set was empty")?;
-
-                if op.len() == index + 1 {
-                    peekable_query.next(); // move to the next char
-                    return op.parse();
+            if let Ok(parsed_operator) = potential_opeartor.parse::<Operator>() {
+                operator_candidate = Some(parsed_operator);
+            } else if let Some(operator) = operator_candidate {
+                if potential_opeartor.chars().nth(0).unwrap().is_alphabetic()
+                    && !peeked_char.is_whitespace()
+                {
+                    peekable_query.back(potential_opeartor.len() - 1);
+                    return Err("Whitespace expected after alphabetic operator!".to_string());
                 }
-            }
-
-            if operator_candidates.is_empty() {
-                break;
+                return Ok(operator);
             }
 
             peekable_query.next();
-            index += 1;
         }
 
-        Err("No operator".to_string())
+        if let Some(operator) = operator_candidate {
+            return Ok(operator);
+        }
+        Err("Did not found operator!".to_string())
     }
 
     fn parse_field_value(peekable_query: &mut PeekableDeque<char>) -> Result<FieldValue, String> {
@@ -608,6 +651,18 @@ impl Query {
         Ok(field_name)
     }
 
+    fn parse_sort_direction(
+        peekable_query: &mut PeekableDeque<char>,
+    ) -> Result<OrderDirection, String> {
+        match Query::parse_keyword(peekable_query, "ASC", false) {
+            Ok(()) => Ok(OrderDirection::ASC),
+            Err(_) => match Query::parse_keyword(peekable_query, "DESC", false) {
+                Ok(()) => Ok(OrderDirection::DESC),
+                Err(error) => Err(error),
+            },
+        }
+    }
+
     fn parse_keyword(
         peekable_query: &mut PeekableDeque<char>,
         keyword: &str,
@@ -641,14 +696,6 @@ impl Query {
             }
         }
 
-        if let Some(&c) = peekable_query.peek() {
-            if !c.is_whitespace() {
-                return Err(format!(
-                    "Expected emptyspace after {} keyward, but found: {}...",
-                    keyword, c
-                ));
-            }
-        }
         Ok(())
     }
 
@@ -664,12 +711,26 @@ impl Query {
             }
         }
     }
+
+    fn parse_mandatory_whitespace(peekable_query: &mut PeekableDeque<char>) -> Result<(), String> {
+        // mandatory wihtespace
+        if let Some(&peeked_char) = peekable_query.peek() {
+            if !peeked_char.is_whitespace() {
+                return Err(format!("Expected whitespace, but found {}", peeked_char));
+            }
+        } else {
+            return Err("Expected a whitespace, but fonud nothing!".to_string());
+        }
+
+        peekable_query.next();
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use core::panic;
 
     #[ignore = "TODO: implement this test"]
     #[test]
@@ -694,6 +755,71 @@ mod tests {
     #[ignore = "TODO: implement this test"]
     #[test]
     fn parse_expression() {}
+
+    /////////////////////////////////////
+    // PARSE ORDER BY
+    /////////////////////////////////////
+    #[test]
+    fn test_parse_order_by_multiple_field() -> Result<(), String> {
+        let field1 = "field1".to_string();
+        let field2 = "field2".to_string();
+        let field3 = "field3".to_string();
+        let field4 = "field4".to_string();
+        let query = format!(
+            "order by {} desc, {}, {} asc, {}",
+            field1, field2, field3, field4
+        );
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        match Query::parse_order_by(&mut peekable_query) {
+            Ok(obf) => assert_eq!(
+                vec![
+                    OrderByFieldOption::new(field1, OrderDirection::DESC),
+                    OrderByFieldOption::new(field2, OrderDirection::ASC),
+                    OrderByFieldOption::new(field3, OrderDirection::ASC),
+                    OrderByFieldOption::new(field4, OrderDirection::ASC),
+                ],
+                obf
+            ),
+            Err(error) => return Err(error),
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_order_by_one_field_with_direction() -> Result<(), String> {
+        let field1 = "field1".to_string();
+        let query = format!("order by {} desc", field1);
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        match Query::parse_order_by(&mut peekable_query) {
+            Ok(obf) => assert_eq!(
+                vec![OrderByFieldOption::new(field1, OrderDirection::DESC)],
+                obf
+            ),
+            Err(error) => return Err(error),
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_order_by_one_field_no_direction() -> Result<(), String> {
+        let field1 = "field1".to_string();
+        let query = format!("order by {}", field1);
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        match Query::parse_order_by(&mut peekable_query) {
+            Ok(obf) => assert_eq!(
+                vec![OrderByFieldOption::new(field1, OrderDirection::ASC)],
+                obf
+            ),
+            Err(error) => return Err(error),
+        }
+
+        Ok(())
+    }
 
     /////////////////////////////////////
     // PARSE FUNCTION
@@ -1364,7 +1490,7 @@ mod tests {
         let operator = "AND ".to_string();
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(operator.chars());
 
-        match Query::parse_operator(&mut peekable_query) {
+        match Query::try_parse_operator(&mut peekable_query) {
             Ok(op) => assert_eq!(Operator::And, op),
             Err(error) => return Err(error),
         }
@@ -1379,7 +1505,7 @@ mod tests {
         let operator = "and ".to_string();
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(operator.chars());
 
-        match Query::parse_operator(&mut peekable_query) {
+        match Query::try_parse_operator(&mut peekable_query) {
             Ok(op) => assert_eq!(Operator::And, op),
             Err(error) => return Err(error),
         }
@@ -1394,7 +1520,7 @@ mod tests {
         let operator = "<=".to_string();
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(operator.chars());
 
-        match Query::parse_operator(&mut peekable_query) {
+        match Query::try_parse_operator(&mut peekable_query) {
             Ok(op) => assert_eq!(Operator::Lte, op),
             Err(error) => return Err(error),
         }
@@ -1403,11 +1529,11 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_existing_operator() -> Result<(), String> {
+    fn test_parse_existing_operator_without_space() -> Result<(), String> {
         let operator = "AND".to_string();
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(operator.chars());
 
-        match Query::parse_operator(&mut peekable_query) {
+        match Query::try_parse_operator(&mut peekable_query) {
             Ok(op) => assert_eq!(Operator::And, op),
             Err(error) => return Err(error),
         }
@@ -1416,12 +1542,42 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_non_existing_long_operator() -> Result<(), String> {
+    fn test_parse_existing_operator() -> Result<(), String> {
+        let operator = "AND ".to_string();
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(operator.chars());
+
+        match Query::try_parse_operator(&mut peekable_query) {
+            Ok(op) => assert_eq!(Operator::And, op),
+            Err(error) => return Err(error),
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_non_existing_long_alphabetic_operator() -> Result<(), String> {
         let operator = "ANDN".to_string();
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(operator.chars());
 
-        match Query::parse_operator(&mut peekable_query) {
-            Ok(op) => assert_eq!(Operator::And, op),
+        if Query::try_parse_operator(&mut peekable_query).is_ok() {
+            return Err(
+                "Should fail because alphabetic operators require whitespace after them!"
+                    .to_string(),
+            );
+        }
+
+        assert_eq!('A', *peekable_query.peek().unwrap());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_non_existing_long_non_alphabetic_operator() -> Result<(), String> {
+        let operator = "<N".to_string();
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(operator.chars());
+
+        match Query::try_parse_operator(&mut peekable_query) {
+            Ok(op) => assert_eq!(Operator::Lt, op),
             Err(error) => return Err(error),
         }
 
@@ -1435,7 +1591,7 @@ mod tests {
         let operator = "A ".to_string();
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(operator.chars());
 
-        if Query::parse_operator(&mut peekable_query).is_ok() {
+        if Query::try_parse_operator(&mut peekable_query).is_ok() {
             return Err("It should fail since there is no operator ANN!".to_string());
         }
 
@@ -1447,7 +1603,7 @@ mod tests {
         let operator = "A".to_string();
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(operator.chars());
 
-        if Query::parse_operator(&mut peekable_query).is_ok() {
+        if Query::try_parse_operator(&mut peekable_query).is_ok() {
             return Err("It should fail since there is no operator ANN!".to_string());
         }
 
@@ -1459,7 +1615,7 @@ mod tests {
         let operator = "ANN".to_string();
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(operator.chars());
 
-        if Query::parse_operator(&mut peekable_query).is_ok() {
+        if Query::try_parse_operator(&mut peekable_query).is_ok() {
             return Err("It should fail since there is no operator ANN!".to_string());
         }
 
@@ -1471,7 +1627,7 @@ mod tests {
         let operator = "NAN".to_string();
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(operator.chars());
 
-        if Query::parse_operator(&mut peekable_query).is_ok() {
+        if Query::try_parse_operator(&mut peekable_query).is_ok() {
             return Err("It should fail since there is no operator ANN!".to_string());
         }
 
@@ -1496,6 +1652,47 @@ mod tests {
     }
 
     /////////////////////////////////////
+    // PARSE SORT DIRECTION
+    /////////////////////////////////////
+    #[test]
+    fn test_parse_sort_direction_desc() -> Result<(), String> {
+        let query = "desc".to_string();
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        match Query::parse_sort_direction(&mut peekable_query) {
+            Ok(sd) => assert_eq!(OrderDirection::DESC, sd),
+            Err(error) => return Err(error),
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_sort_direction_asc() -> Result<(), String> {
+        let query = "asc".to_string();
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        match Query::parse_sort_direction(&mut peekable_query) {
+            Ok(sd) => assert_eq!(OrderDirection::ASC, sd),
+            Err(error) => return Err(error),
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_sort_direction_non_existant() -> Result<(), String> {
+        let query = "invalid".to_string();
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        if Query::parse_sort_direction(&mut peekable_query).is_ok() {
+            return Err("It should fail since there ASC or DESC are expected!".to_string());
+        }
+
+        Ok(())
+    }
+
+    /////////////////////////////////////
     // PARSE KEYWORD
     /////////////////////////////////////
     #[test]
@@ -1504,10 +1701,9 @@ mod tests {
         let query = format!("{}bla", keyword);
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
 
-        if Query::parse_keyword(&mut peekable_query, &keyword, true).is_ok() {
-            return Err(
-                "It should fail since there whitespace is expected after keyword!".to_string(),
-            );
+        match Query::parse_keyword(&mut peekable_query, &keyword, true) {
+            Ok(()) => {}
+            Err(error) => return Err(error),
         }
 
         assert_eq!('b', *peekable_query.peek().unwrap());
@@ -1587,11 +1783,7 @@ mod tests {
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
 
         Query::parse_whitespaces(&mut peekable_query);
-        if let Some(&peeked_char) = peekable_query.peek() {
-            assert_eq!('a', peeked_char);
-        } else {
-            panic!("Expected 'a' char, but got nothing!");
-        }
+        assert_eq!('a', *peekable_query.peek().unwrap());
     }
 
     #[test]
@@ -1600,10 +1792,31 @@ mod tests {
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
 
         Query::parse_whitespaces(&mut peekable_query);
-        if let Some(&peeked_char) = peekable_query.peek() {
-            assert_eq!('a', peeked_char);
-        } else {
-            panic!("Expected 'a' char, but got nothing!");
+        assert_eq!('a', *peekable_query.peek().unwrap());
+    }
+
+    /////////////////////////////////////
+    // PARSE MANDATORY WHITESPACE
+    /////////////////////////////////////
+    #[test]
+    fn test_parse_mandatory_whitespaces_without_whitspace() -> Result<(), String> {
+        let query = "b".to_string();
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        if Query::parse_mandatory_whitespace(&mut peekable_query).is_ok() {
+            return Err("It should fail since there is whitespace is expected".to_string());
         }
+        assert_eq!('b', *peekable_query.peek().unwrap());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_mandatory_whitespaces_with_whitspace() {
+        let query = " b".to_string();
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+
+        Query::parse_mandatory_whitespace(&mut peekable_query);
+        assert_eq!('b', *peekable_query.peek().unwrap());
     }
 }
