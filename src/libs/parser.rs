@@ -1,7 +1,10 @@
+// I wanted to try to do parsing in one go, but after trying, I'd say doing tokenisation first
+// would make for a nicer and cleaner code. If I'm bathered, might rewrite at some point.
+
 use crate::libs::peekable_deque::PeekableDeque;
 use core::f64;
 use hashbrown::HashSet;
-use std::{str::FromStr, task::Wake};
+use std::str::FromStr;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Operator {
@@ -142,13 +145,24 @@ impl FromStr for Query {
             Err(error) => return Err(format!("Error: {}, Query: {:?}", error, peekable_query)),
         };
 
-        let from_function = match Query::parse_from(&mut peekable_query) {
-            Ok(ft) => ft,
-            Err(error) => return Err(format!("Error: {}, Query: {:?}", error, peekable_query)),
-        };
+        // parse_SELECT parses whitespace after its fields
 
-        Query::parse_mandatory_whitespace(&mut peekable_query)?;
-        Query::parse_whitespaces(&mut peekable_query);
+        let mut from_function = Function::new("".to_string(), Vec::new());
+        if let Some(&peeked_char) = peekable_query.peek() {
+            if peeked_char == 'f' || peeked_char == 'F' {
+                from_function = match Query::parse_from(&mut peekable_query) {
+                    Ok(ft) => ft,
+                    Err(error) => {
+                        return Err(format!("Error: {}, Query: {:?}", error, peekable_query))
+                    }
+                };
+            }
+        }
+
+        if !from_function.args.is_empty() {
+            Query::parse_mandatory_whitespace(&mut peekable_query)?;
+            Query::parse_whitespaces(&mut peekable_query);
+        }
 
         let mut where_expression = Vec::new();
         if let Some(&peeked_char) = peekable_query.peek() {
@@ -162,16 +176,17 @@ impl FromStr for Query {
             }
         }
 
+        // in some cases where parses whitespace, in some not, so ORDER BY would technically work
+        // even without whitespace atm, but not a huge problem, so won't deal with it for now
+        //if !where_expression.is_empty() {
+        //    Query::parse_mandatory_whitespace(&mut peekable_query)?;
+        //    Query::parse_whitespaces(&mut peekable_query);
+        //}
         Query::parse_whitespaces(&mut peekable_query);
 
         let mut order_by_fields = Vec::new();
         if let Some(&peeked_char) = peekable_query.peek() {
             if peeked_char == 'o' || peeked_char == 'O' {
-                //if !where_expression.is_empty() {
-                //    Query::parse_mandatory_whitespace(&mut peekable_query)?;
-                //    Query::parse_whitespaces(&mut peekable_query);
-                //}
-
                 order_by_fields = match Query::parse_order_by(&mut peekable_query) {
                     Ok(ob) => ob,
                     Err(error) => {
