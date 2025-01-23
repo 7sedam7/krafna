@@ -1,3 +1,6 @@
+// I wanted to try to do parsing in one go, but after trying, I'd say doing tokenisation first
+// would make for a nicer and cleaner code. If I'm bathered, might rewrite at some point.
+
 use crate::libs::peekable_deque::PeekableDeque;
 use core::f64;
 use hashbrown::HashSet;
@@ -148,6 +151,8 @@ impl FromStr for Query {
             }
         };
 
+        // parse_SELECT parses whitespace after its fields
+
         let mut from_function = None;
         if let Some(&peeked_char) = peekable_query.peek() {
             if peeked_char == 'f' || peeked_char == 'F' {
@@ -191,7 +196,8 @@ impl FromStr for Query {
             }
         }
 
-        // sometimes whitespace will be parsed, and sometimes not, so ignoring for now
+        // in some cases where parses whitespace, in some not, so ORDER BY would technically work
+        // even without whitespace atm, but not a huge problem, so won't deal with it for now
         //if !where_expression.is_empty() {
         //    Query::parse_mandatory_whitespace(&mut peekable_query)?;
         //    Query::parse_whitespaces(&mut peekable_query);
