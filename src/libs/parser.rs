@@ -1,7 +1,7 @@
 use crate::libs::peekable_deque::PeekableDeque;
 use core::f64;
 use hashbrown::HashSet;
-use std::{str::FromStr, task::Wake};
+use std::str::FromStr;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Operator {
@@ -126,7 +126,7 @@ pub enum OrderDirection {
 #[derive(Debug)]
 pub struct Query {
     pub select_fields: Vec<String>,
-    pub from_function: Function,
+    pub from_function: Option<Function>,
     pub where_expression: Vec<ExpressionElement>,
     pub order_by_fields: Vec<OrderByFieldOption>,
 }
@@ -139,15 +139,40 @@ impl FromStr for Query {
 
         let select_fields = match Query::parse_select(&mut peekable_query) {
             Ok(sf) => sf,
-            Err(error) => return Err(format!("Error: {}, Query: {:?}", error, peekable_query)),
+            Err(error) => {
+                return Err(format!(
+                    "Error parsing SELECT: {}, Query: \"{}\"",
+                    error,
+                    peekable_query.display_state()
+                ))
+            }
         };
 
-        let from_function = match Query::parse_from(&mut peekable_query) {
-            Ok(ft) => ft,
-            Err(error) => return Err(format!("Error: {}, Query: {:?}", error, peekable_query)),
-        };
+        let mut from_function = None;
+        if let Some(&peeked_char) = peekable_query.peek() {
+            if peeked_char == 'f' || peeked_char == 'F' {
+                from_function = match Query::parse_from(&mut peekable_query) {
+                    Ok(ft) => Some(ft),
+                    Err(error) => {
+                        return Err(format!(
+                            "Error parsing FROM: {}, Query: \"{}\"",
+                            error,
+                            peekable_query.display_state()
+                        ))
+                    }
+                };
+            }
+        }
 
-        Query::parse_mandatory_whitespace(&mut peekable_query)?;
+        if !peekable_query.end() && from_function.is_some() {
+            if let Err(error) = Query::parse_mandatory_whitespace(&mut peekable_query) {
+                return Err(format!(
+                    "{} Query: \"{}\"",
+                    error,
+                    peekable_query.display_state(),
+                ));
+            }
+        }
         Query::parse_whitespaces(&mut peekable_query);
 
         let mut where_expression = Vec::new();
@@ -156,26 +181,34 @@ impl FromStr for Query {
                 where_expression = match Query::parse_where(&mut peekable_query) {
                     Ok(we) => we,
                     Err(error) => {
-                        return Err(format!("Error: {}, Query: {:?}", error, peekable_query))
+                        return Err(format!(
+                            "Error parsing WHERE: {}, Query: \"{}\"",
+                            error,
+                            peekable_query.display_state()
+                        ));
                     }
                 };
             }
         }
 
+        // sometimes whitespace will be parsed, and sometimes not, so ignoring for now
+        //if !where_expression.is_empty() {
+        //    Query::parse_mandatory_whitespace(&mut peekable_query)?;
+        //    Query::parse_whitespaces(&mut peekable_query);
+        //}
         Query::parse_whitespaces(&mut peekable_query);
 
         let mut order_by_fields = Vec::new();
         if let Some(&peeked_char) = peekable_query.peek() {
             if peeked_char == 'o' || peeked_char == 'O' {
-                //if !where_expression.is_empty() {
-                //    Query::parse_mandatory_whitespace(&mut peekable_query)?;
-                //    Query::parse_whitespaces(&mut peekable_query);
-                //}
-
                 order_by_fields = match Query::parse_order_by(&mut peekable_query) {
                     Ok(ob) => ob,
                     Err(error) => {
-                        return Err(format!("Error: {}, Query: {:?}", error, peekable_query))
+                        return Err(format!(
+                            "Error parsing ORDER BY: {}, Query: \"{}\"",
+                            error,
+                            peekable_query.display_state()
+                        ));
                     }
                 };
             }
@@ -197,13 +230,13 @@ impl FromStr for Query {
 impl Query {
     pub fn new(
         select_fields: Vec<String>,
-        from_tables: Function,
+        from_function: Option<Function>,
         where_expression: Vec<ExpressionElement>,
         order_by_fields: Vec<OrderByFieldOption>,
     ) -> Self {
         Query {
             select_fields,
-            from_function: from_tables,
+            from_function,
             where_expression,
             order_by_fields,
         }
@@ -232,6 +265,8 @@ impl Query {
                 if peeked_char != ',' {
                     break;
                 }
+            } else {
+                break;
             }
 
             peekable_query.next();
@@ -240,7 +275,7 @@ impl Query {
         Ok(select_fields)
     }
 
-    fn parse_from(peekable_query: &mut PeekableDeque<char>) -> Result<Function, String> {
+    pub fn parse_from(peekable_query: &mut PeekableDeque<char>) -> Result<Function, String> {
         match Query::parse_keyword(peekable_query, "FROM", false) {
             Ok(()) => {}
             Err(error) => return Err(error),
@@ -464,7 +499,10 @@ impl Query {
                     peeked_char
                 ));
             }
+        } else {
+            return Err("Expected a quote symbol, but found nothing!".to_string());
         }
+
         let opened_quote = *peekable_query.peek().unwrap();
         peekable_query.next();
 
@@ -683,14 +721,14 @@ impl Query {
 
                 if !match_condition {
                     return Err(format!(
-                        "Expected {}, but instead found: {}...",
+                        "Expected {}, but instead found: '{}'!",
                         keyword, matched
                     ));
                 }
                 peekable_query.next();
             } else {
                 return Err(format!(
-                    "Expected {}, but instead found: {}...",
+                    "Expected {}, but instead found: '{}'!",
                     keyword, matched
                 ));
             }
@@ -716,7 +754,7 @@ impl Query {
         // mandatory wihtespace
         if let Some(&peeked_char) = peekable_query.peek() {
             if !peeked_char.is_whitespace() {
-                return Err(format!("Expected whitespace, but found {}", peeked_char));
+                return Err(format!("Expected whitespace, but found {}!", peeked_char));
             }
         } else {
             return Err("Expected a whitespace, but fonud nothing!".to_string());

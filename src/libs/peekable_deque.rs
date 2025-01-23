@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::fmt::{Debug, Display};
 
 #[derive(Debug)]
 pub struct PeekableDeque<T> {
@@ -6,7 +6,7 @@ pub struct PeekableDeque<T> {
     index: usize,
 }
 
-impl<T> PeekableDeque<T> {
+impl<T: Display> PeekableDeque<T> {
     // Constructor to create a new PeekableDeque from an iterator
     pub fn from_iter<I>(iter: I) -> Self
     where
@@ -31,6 +31,31 @@ impl<T> PeekableDeque<T> {
 
     pub fn back(&mut self, n: usize) {
         self.index = self.index.saturating_sub(n)
+    }
+
+    pub fn end(&self) -> bool {
+        self.index >= self.deque.len()
+    }
+
+    pub fn display_state(&self) -> String {
+        let str = self
+            .deque
+            .iter()
+            .enumerate()
+            .map(|(i, c)| {
+                if i == self.index {
+                    format!("[{}]", c)
+                } else {
+                    format!("{}", c)
+                }
+            })
+            .collect();
+
+        if self.end() {
+            return format!("{}[]", str);
+        }
+
+        str
     }
 }
 
@@ -105,5 +130,22 @@ mod tests {
         if let Some(peeked_char) = peekable_query.peek() {
             panic!("Expected nothing, but got {}", peeked_char);
         }
+    }
+
+    #[test]
+    fn test_display_state() {
+        let query = "test".to_string();
+        let mut peekable_query = PeekableDeque::from_iter(query.chars());
+
+        assert_eq!("[t]est", peekable_query.display_state());
+
+        peekable_query.next();
+        assert_eq!("t[e]st", peekable_query.display_state());
+
+        peekable_query.next();
+        assert_eq!("te[s]t", peekable_query.display_state());
+
+        peekable_query.next();
+        assert_eq!("tes[t]", peekable_query.display_state());
     }
 }

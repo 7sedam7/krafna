@@ -54,7 +54,9 @@ fn test_complex_query_parsing() {
                 "~/folder".to_string(),
             ))],
         ),
-        result.from_function
+        result
+            .from_function
+            .expect("Expected FROM to be parsed correctly!")
     );
 
     // Verify WHERE expression

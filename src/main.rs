@@ -1,102 +1,41 @@
-use gray_matter::engine::YAML;
-use gray_matter::{Matter, Pod};
-use rayon::prelude::*;
+use std::env;
 use std::error::Error;
-use std::path::PathBuf;
-use std::{env, fs};
-use walkdir::WalkDir;
 
-use krafna::Query;
-
-fn get_markdown_files(dir: &str) -> Result<Vec<PathBuf>, Box<dyn Error>> {
-    let mut markdown_files = Vec::new();
-
-    for entry in WalkDir::new(dir)
-        .follow_links(true)
-        .into_iter()
-        .filter_map(|e| e.ok())
-    {
-        if entry.file_type().is_file() {
-            let path = entry.path();
-            if let Some(extension) = path.extension() {
-                if extension == "md" {
-                    markdown_files.push(path.to_path_buf());
-                }
-            }
-        }
-    }
-
-    Ok(markdown_files)
-}
-
-// Sequencial
-// fn read_frontmatter(files: Vec<PathBuf>) -> Result<Vec<(PathBuf, Pod)>, Box<dyn Error>> {
-//     let matter = Matter::<YAML>::new();
-//     let mut results = Vec::new();
-//
-//     for path in files {
-//         let content = fs::read_to_string(&path)?;
-//         let result = matter.parse(&content);
-//
-//         if let Some(data) = result.data {
-//             results.push((path, data));
-//         }
-//     }
-//
-//     Ok(results)
-// }
-
-//
-fn read_frontmatter(files: Vec<PathBuf>) -> Result<Vec<(PathBuf, Pod)>, Box<dyn Error>> {
-    let matter = Matter::<YAML>::new();
-
-    // Convert to parallel iterator and collect results
-    let results: Vec<(PathBuf, Pod)> = files
-        .par_iter()
-        .filter_map(|path| {
-            let content = fs::read_to_string(path).ok()?;
-            let result = matter.parse(&content);
-            result.data.map(|data| (path.clone(), data))
-        })
-        .collect();
-
-    Ok(results)
-}
+use krafna::libs::executor::execute_query;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().collect();
-    //println!("{:?}", args);
+
     if args.len() < 2 {
-        println!("Missing directory path!");
+        println!("Usage: krafna <query> [--from <from_part>]");
         return Ok(());
     }
 
-    let dir_path = &args[1];
+    let query = args[1].clone();
+    let mut from_query = None;
 
-    if let Some(query) = env::args().nth(2) {
-        //let dir_path = "~/.dotfiles/";
-        //if let query = "select test from ( (#kifla or #space  ) and #mifla)".to_string() {
-
-        match query.parse::<Query>() {
-            Ok(qp) => println!("Parsed query statement: {:?}", qp),
-            Err(e) => {
-                eprintln!("Error parsing query: {}", e);
-                std::process::exit(1);
+    let mut i = 2;
+    while i < args.len() {
+        if args[i] == "--from" {
+            if i + 1 < args.len() {
+                from_query = Some(args[i + 1].clone());
+                i += 2;
+                continue;
+            } else {
+                println!("Error: --from requires a value");
+                return Ok(());
             }
+        } else {
+            println!("Error: Invalid argument '{}'", args[i]);
+            println!("Usage: krafna <query> [--from <from_part>]");
+            return Ok(());
         }
     }
 
-    println!("dp: {dir_path}");
-
-    let files = get_markdown_files(dir_path)?;
-    let frontmatters = read_frontmatter(files)?;
-
-    // for (path, frontmatter) in frontmatters {
-    //     println!("File: {}", path.display());
-    //     println!("Frontmatter: {:#?}", frontmatter.as_vec()?);
-    //     // println!("Frontmatter: {:#?}", frontmatter.as_hashmap()?.get("tags"));
-    //     println!("---");
-    // }
+    match execute_query(query, from_query) {
+        Ok(res) => println!("Result: {:?}", res),
+        Err(error) => println!("Error: {}", error),
+    }
 
     Ok(())
 }
