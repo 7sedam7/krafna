@@ -1,3 +1,4 @@
+pub mod data_fetcher;
 pub mod executor;
 pub mod parser;
 pub mod peekable_deque;

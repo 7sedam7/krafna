@@ -1,10 +1,11 @@
 // I wanted to try to do parsing in one go, but after trying, I'd say doing tokenisation first
 // would make for a nicer and cleaner code. If I'm bathered, might rewrite at some point.
 
-use crate::libs::peekable_deque::PeekableDeque;
 use core::f64;
 use hashbrown::HashSet;
 use std::str::FromStr;
+
+use crate::libs::peekable_deque::PeekableDeque;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Operator {
@@ -1860,7 +1861,7 @@ mod tests {
         let query = " b".to_string();
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
 
-        Query::parse_mandatory_whitespace(&mut peekable_query);
+        let _ = Query::parse_mandatory_whitespace(&mut peekable_query);
         assert_eq!('b', *peekable_query.peek().unwrap());
     }
 }
