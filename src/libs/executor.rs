@@ -49,50 +49,49 @@ pub fn execute_query(
 
 fn execute_where(condition: &Vec<ExpressionElement>, data: &Vec<(PathBuf, Pod)>) {
     let queue = infix_to_postfix(condition);
+    let mut eval_stack = Vec::new();
 
-    for element in condition {
+    for element in queue {
         match element {
-            ExpressionElement::OpenedBracket => {}
-            ExpressionElement::ClosedBracket => {
-                // TODO: Handle closing bracket
+            ExpressionElement::FieldName(_)
+            | ExpressionElement::FieldValue(_)
+            | ExpressionElement::Function(_) => {
+                eval_stack.push(element.clone());
             }
             ExpressionElement::Operator(op) => {
-                // TODO: Handle operator
-                match op {
-                    Operator::And => println!("AND operator"),
-                    Operator::Or => println!("OR operator"),
-                    Operator::In => println!("IN operator"),
-                    Operator::Lt => println!("LESS THAN operator"),
-                    Operator::Lte => println!("LESS THAN OR EQUAL operator"),
-                    Operator::Gt => println!("GREATER THAN operator"),
-                    Operator::Gte => println!("GREATER THAN OR EQUAL operator"),
-                    Operator::Eq => println!("EQUAL operator"),
-                    Operator::Neq => println!("NOT EQUAL operator"),
-                    Operator::Plus => println!("PLUS operator"),
-                    Operator::Minus => println!("MINUS operator"),
-                    Operator::Multiply => println!("MULTIPLY operator"),
-                    Operator::Divide => println!("DIVIDE operator"),
-                    Operator::Power => println!("POWER operator"),
-                    Operator::FloorDivide => println!("FLOOR DIVIDE operator"),
-                }
+                let right = eval_stack.pop().unwrap();
+                let left = eval_stack.pop().unwrap();
+                execute_operation(data, &op, &left, &right);
+                // need te return marked filtered data
             }
-            ExpressionElement::FieldName(name) => {
-                // Handle field name
-                println!("Field name: {}", name);
-            }
-            ExpressionElement::FieldValue(value) => {
-                // Handle field value
-                match value {
-                    FieldValue::String(s) => println!("String value: {}", s),
-                    FieldValue::Number(n) => println!("Number value: {}", n),
-                    FieldValue::Bool(b) => println!("Boolean value: {}", b),
-                }
-            }
-            ExpressionElement::Function(func) => {
-                // Handle function
-                println!("Function: {} with {:?} args", func.name, func.args);
-            }
+            _ => {} // consider throwing an error, even though this should not happen
         }
+    }
+}
+
+fn execute_operation(
+    data: &Vec<(PathBuf, Pod)>,
+    op: &Operator,
+    left: &ExpressionElement,
+    right: &ExpressionElement,
+) {
+    // TODO: Handle operator
+    match op {
+        Operator::And => println!("AND operator"),
+        Operator::Or => println!("OR operator"),
+        Operator::In => println!("IN operator"),
+        Operator::Lt => println!("LESS THAN operator"),
+        Operator::Lte => println!("LESS THAN OR EQUAL operator"),
+        Operator::Gt => println!("GREATER THAN operator"),
+        Operator::Gte => println!("GREATER THAN OR EQUAL operator"),
+        Operator::Eq => println!("EQUAL operator"),
+        Operator::Neq => println!("NOT EQUAL operator"),
+        Operator::Plus => println!("PLUS operator"),
+        Operator::Minus => println!("MINUS operator"),
+        Operator::Multiply => println!("MULTIPLY operator"),
+        Operator::Divide => println!("DIVIDE operator"),
+        Operator::Power => println!("POWER operator"),
+        Operator::FloorDivide => println!("FLOOR DIVIDE operator"),
     }
 }
 
