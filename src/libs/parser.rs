@@ -71,7 +71,7 @@ impl FromStr for Operator {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum ExpressionElement {
     OpenedBracket,
     ClosedBracket,
