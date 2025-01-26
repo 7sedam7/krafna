@@ -51,6 +51,8 @@ fn execute_where(condition: &Vec<ExpressionElement>, data: &Vec<(PathBuf, Pod)>)
     let queue = infix_to_postfix(condition);
     let mut eval_stack = Vec::new();
 
+    println!("QUEUE: {:?}", queue);
+
     for element in queue {
         match element {
             ExpressionElement::FieldName(_)
@@ -128,15 +130,11 @@ fn infix_to_postfix(condition: &Vec<ExpressionElement>) -> Vec<ExpressionElement
                 // op goes on stack unless op on stack has higher priority, then it goes to queue
                 if let Some(ExpressionElement::Operator(last_op)) = stack.last() {
                     // compare and higher priority goes to queue
-                    if operator_precedence(last_op) > operator_precedence(op) {
+                    if operator_precedence(last_op) >= operator_precedence(op) {
                         queue.push(stack.pop().unwrap());
-                        stack.push(element.clone());
-                    } else {
-                        queue.push(element.clone());
                     }
-                } else {
-                    stack.push(element.clone());
                 }
+                stack.push(element.clone());
             }
             ExpressionElement::ClosedBracket => {
                 while let Some(ExpressionElement::Operator(_)) = stack.last() {
@@ -145,6 +143,9 @@ fn infix_to_postfix(condition: &Vec<ExpressionElement>) -> Vec<ExpressionElement
                 stack.pop();
             }
         }
+    }
+    while stack.last().is_some() {
+        queue.push(stack.pop().unwrap());
     }
 
     queue
