@@ -37,14 +37,15 @@ pub fn execute_query(
     println!("Parsed query: {:?}", query);
     let frontmatter_data = fetch_data(&query.from_function.unwrap())?;
 
-    execute_where(&query.where_expression, &frontmatter_data)?;
+    let result = execute_where(&query.where_expression, &frontmatter_data)?;
 
     //for (path, frontmatter) in frontmatter_data {
-    //    println!("File: {}", path.display());
-    //    // println!("Frontmatter: {:#?}", frontmatter.as_vec()?);
-    //    println!("Frontmatter: {:#?}", frontmatter.as_hashmap()?.get("tags"));
-    //    println!("---");
-    //}
+    for (path, frontmatter) in result {
+        println!("File: {}", path.display());
+        // println!("Frontmatter: {:#?}", frontmatter.as_vec()?);
+        println!("Frontmatter: {:#?}", frontmatter.as_hashmap()?.get("tags"));
+        println!("---");
+    }
 
     Ok(vec![])
 }
@@ -58,7 +59,11 @@ enum Operand {
 fn execute_where(
     condition: &Vec<ExpressionElement>,
     data: &Vec<(PathBuf, Pod)>,
-) -> Result<(), String> {
+) -> Result<Vec<(PathBuf, Pod)>, String> {
+    if condition.is_empty() {
+        return Ok(data.clone());
+    }
+
     let mut stack = Vec::new();
     let mut eval_stack = Vec::new();
     let mut bool_stack = Vec::new();
@@ -115,7 +120,21 @@ fn execute_where(
         handle_operator_to_queue(&mut stack, &mut eval_stack, &mut bool_stack, data)?;
     }
 
-    Ok(())
+    if bool_stack.len() != 1 {
+        return Err(format!(
+            "Expected exactly one element in bool_stack, but found {}!",
+            bool_stack.len()
+        ));
+    }
+
+    let final_indexes = bool_stack.pop().unwrap();
+
+    Ok(data
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| final_indexes.contains(index))
+        .map(|(_, item)| item.clone())
+        .collect())
 }
 
 fn handle_operator_to_queue(
@@ -232,15 +251,50 @@ fn execute_operator_eq(
     left: &Operand,
     right: &Operand,
 ) -> Result<Operand, String> {
-    let Operand::QueueElement(left_val) = left else {
+    let Operand::QueueElement(left_el) = left else {
         return Err("Operation AND expects operands to be BoolElement, LEFT was not!".to_string());
     };
-    let Operand::QueueElement(right_val) = right else {
+    let Operand::QueueElement(right_el) = right else {
         return Err("Operation AND expects operands to be BoolElement, LEFT was not!".to_string());
     };
 
-    let indexes: HashSet<usize> = HashSet::new();
+    let mut indexes: HashSet<usize> = HashSet::new();
     // TODO: fill the indexes mased on data that satisfies the condition
+    for (index, (_, data_el)) in data.iter().enumerate() {
+        let left_val = get_queue_element_value(left_el, data_el)?;
+        let right_val = get_queue_element_value(right_el, data_el)?;
+
+        if left_val == right_val {
+            indexes.insert(index);
+        }
+    }
 
     Ok(Operand::BoolElement(indexes))
+}
+
+fn get_queue_element_value(
+    operand: &ExpressionElement,
+    data: &Pod,
+) -> Result<Option<FieldValue>, String> {
+    match operand {
+        ExpressionElement::FieldName(field_name) => {
+            // TODO: add nested access with . (test.kifla.smurph)
+            let data_el = data.as_hashmap().map_err(|e| e.to_string())?;
+            if let Some(field_value) = data_el.get(field_name) {
+                match field_value {
+                    Pod::Null => Ok(None),
+                    Pod::String(str) => Ok(Some(FieldValue::String(str.clone()))),
+                    Pod::Float(num) => Ok(Some(FieldValue::Number(*num))),
+                    Pod::Integer(num) => Ok(Some(FieldValue::Number(*num as f64))),
+                    Pod::Boolean(bool) => Ok(Some(FieldValue::Bool(*bool))),
+                    _ => Ok(None),
+                }
+            } else {
+                Ok(None)
+            }
+        }
+        ExpressionElement::FieldValue(field_value) => Ok(Some(field_value.clone())),
+        ExpressionElement::Function(func) => Err("TODO: Implement function execution!".to_string()),
+        _ => Err(format!("Unsupported element: {:?}!", operand)),
+    }
 }
