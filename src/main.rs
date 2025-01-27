@@ -33,7 +33,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     match execute_query(query, from_query) {
-        Ok(res) => println!("Result: {:?}", res),
+        Ok(res) => {
+            println!("Result:");
+            for element in res {
+                println!("{}", element);
+            }
+        }
         Err(error) => println!("Error: {}", error),
     }
 

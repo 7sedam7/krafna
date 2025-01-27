@@ -125,6 +125,18 @@ impl FieldValue {
             _ => false,
         }
     }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            FieldValue::String(s) => s.clone(),
+            FieldValue::Number(n) => n.to_string(),
+            FieldValue::Bool(b) => b.to_string(),
+            FieldValue::List(list) => {
+                let elements: Vec<String> = list.iter().map(|item| item.to_string()).collect();
+                format!("[{}]", elements.join(", "))
+            }
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
