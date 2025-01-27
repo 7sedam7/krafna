@@ -101,9 +101,30 @@ impl Function {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum FieldValue {
+    List(Vec<FieldValue>), // TODO: implement parsing of lists in a query []
     String(String),
     Number(f64),
     Bool(bool),
+}
+
+impl PartialOrd for FieldValue {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match (self, other) {
+            (FieldValue::String(s1), FieldValue::String(s2)) => s1.partial_cmp(s2),
+            (FieldValue::Number(n1), FieldValue::Number(n2)) => n1.partial_cmp(n2),
+            (FieldValue::Bool(b1), FieldValue::Bool(b2)) => b1.partial_cmp(b2),
+            _ => None,
+        }
+    }
+}
+
+impl FieldValue {
+    pub fn contains(&self, other: &Self) -> bool {
+        match self {
+            FieldValue::List(list) => list.contains(other),
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]

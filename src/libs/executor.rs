@@ -207,19 +207,23 @@ fn execute_operation(
     // TODO: Handle operator
     match op {
         // get bools, return bool
-        Operator::And => {
-            execute_bool_operation(|a, b| a.intersection(b).copied().collect(), left, right)
+        Operator::And => execute_bool_comparison_operation(
+            |a, b| a.intersection(b).copied().collect(),
+            left,
+            right,
+        ),
+        Operator::Or => {
+            execute_bool_comparison_operation(|a, b| a.union(b).copied().collect(), left, right)
         }
-        Operator::Or => execute_bool_operation(|a, b| a.union(b).copied().collect(), left, right),
 
         // get values, return bools
-        Operator::In => Err("IN operator not implemented!".to_string()),
-        Operator::Lt => Err("LESS THAN operator not implemented!".to_string()),
-        Operator::Lte => Err("LESS THAN OR EQUAL operator not implemented!".to_string()),
-        Operator::Gt => Err("GREATER THAN operator not implemented!".to_string()),
-        Operator::Gte => Err("GREATER THAN OR EQUAL operator not implemented!".to_string()),
-        Operator::Eq => execute_operator_eq(data, left, right),
-        Operator::Neq => Err("NOT EQUAL operator not implemented!".to_string()),
+        Operator::In => execute_val_comparison_operator(data, left, right, |a, b| b.contains(&a)),
+        Operator::Lt => execute_val_comparison_operator(data, left, right, |a, b| a < b),
+        Operator::Lte => execute_val_comparison_operator(data, left, right, |a, b| a <= b),
+        Operator::Gt => execute_val_comparison_operator(data, left, right, |a, b| a > b),
+        Operator::Gte => execute_val_comparison_operator(data, left, right, |a, b| a >= b),
+        Operator::Eq => execute_val_comparison_operator(data, left, right, |a, b| a == b),
+        Operator::Neq => execute_val_comparison_operator(data, left, right, |a, b| a != b),
 
         // get values, return values
         Operator::Plus => Err("PLUS operator not implemented!".to_string()),
@@ -231,7 +235,7 @@ fn execute_operation(
     }
 }
 
-fn execute_bool_operation(
+fn execute_bool_comparison_operation(
     op: fn(&HashSet<usize>, &HashSet<usize>) -> HashSet<usize>,
     left: &Operand,
     right: &Operand,
@@ -246,10 +250,11 @@ fn execute_bool_operation(
     Ok(Operand::BoolElement(op(left_set, right_set)))
 }
 
-fn execute_operator_eq(
+fn execute_val_comparison_operator(
     data: &Vec<(PathBuf, Pod)>,
     left: &Operand,
     right: &Operand,
+    op: fn(FieldValue, FieldValue) -> bool,
 ) -> Result<Operand, String> {
     let Operand::QueueElement(left_el) = left else {
         return Err("Operation AND expects operands to be BoolElement, LEFT was not!".to_string());
@@ -264,7 +269,10 @@ fn execute_operator_eq(
         let left_val = get_queue_element_value(left_el, data_el)?;
         let right_val = get_queue_element_value(right_el, data_el)?;
 
-        if left_val == right_val {
+        if match (left_val, right_val) {
+            (Some(a), Some(b)) => op(a, b),
+            _ => false,
+        } {
             indexes.insert(index);
         }
     }
@@ -287,6 +295,7 @@ fn get_queue_element_value(
                     Pod::Float(num) => Ok(Some(FieldValue::Number(*num))),
                     Pod::Integer(num) => Ok(Some(FieldValue::Number(*num as f64))),
                     Pod::Boolean(bool) => Ok(Some(FieldValue::Bool(*bool))),
+                    Pod::Array(list) => Ok(Some(pod_array_to_field_value(list))),
                     _ => Ok(None),
                 }
             } else {
@@ -297,4 +306,20 @@ fn get_queue_element_value(
         ExpressionElement::Function(func) => Err("TODO: Implement function execution!".to_string()),
         _ => Err(format!("Unsupported element: {:?}!", operand)),
     }
+}
+
+fn pod_array_to_field_value(list: &Vec<Pod>) -> FieldValue {
+    let mut fv_list = Vec::new();
+
+    for el in list {
+        match el {
+            Pod::String(str) => fv_list.push(FieldValue::String(str.clone())),
+            Pod::Float(num) => fv_list.push(FieldValue::Number(*num)),
+            Pod::Integer(num) => fv_list.push(FieldValue::Number(*num as f64)),
+            Pod::Boolean(bool) => fv_list.push(FieldValue::Bool(*bool)),
+            _ => {}
+        }
+    }
+
+    FieldValue::List(fv_list)
 }
