@@ -38,7 +38,7 @@ impl Operator {
         ">=" => Operator::Gte,
         "==" => Operator::Eq,
         "!=" => Operator::Neq,
-        //"LIKE" => Operator::Like,
+        // TODO: "LIKE" => Operator::Like,
         "+" => Operator::Plus,
         "-" => Operator::Minus,
         "*" => Operator::Multiply,

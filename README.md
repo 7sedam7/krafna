@@ -1,4 +1,12 @@
-# Git Hooks
+# Installation
+
+# Usage
+
+`cargo run 'select file_path, tags where "todo" in tags' --from 'frontmatter_data("~/.notes")' | from tsv`
+`cargo run 'select file_path, tags from frontmatter_data("~/.notes") where "todo" in tags' | from tsv`
+
+# Development
+## Git Hooks
 
 This repository uses the following Git hooks to ensure code quality and consistency.
 

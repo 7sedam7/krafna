@@ -34,7 +34,7 @@ pub fn execute_query(
         }
     }
 
-    println!("Parsed query: {:?}", query);
+    //println!("Parsed query: {:?}", query);
     // FROM
     let frontmatter_data = fetch_data(&query.from_function.unwrap())?;
     // WHERE
@@ -63,7 +63,11 @@ enum Operand {
 fn execute_select(fields: &Vec<String>, data: &Vec<(PathBuf, Pod)>) -> Result<Vec<String>, String> {
     // TODO: implement * to select all values
     // TODO: implement function calls in select
+    // TODO: Return Vec<Vec<FieldValue>> and output different formats depending on flagls
+    // (converters implemented separately, json, tsv)
     let mut result_list = Vec::new();
+
+    result_list.push(fields.join("\t"));
 
     for (path_buf, data_el) in data {
         let mut result_list_el = Vec::new();
@@ -86,7 +90,7 @@ fn execute_select(fields: &Vec<String>, data: &Vec<(PathBuf, Pod)>) -> Result<Ve
             }
         }
 
-        result_list.push(result_list_el.join(","));
+        result_list.push(result_list_el.join("\t"));
     }
 
     Ok(result_list)
