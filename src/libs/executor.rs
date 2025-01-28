@@ -73,20 +73,12 @@ fn execute_select(fields: &Vec<String>, data: &Vec<(PathBuf, Pod)>) -> Result<Ve
         let mut result_list_el = Vec::new();
 
         for field_name in fields {
-            match field_name.to_uppercase().as_str() {
-                "FILE_PATH" => result_list_el.push(path_buf.display().to_string()),
-                "FILE_NAME" => result_list_el
-                    .push(path_buf.file_name().unwrap().to_string_lossy().into_owned()),
-                _ => {
-                    if let Some(field_value) = get_queue_element_value(
-                        &ExpressionElement::FieldName(field_name.clone()),
-                        data_el,
-                    )? {
-                        result_list_el.push(field_value.to_string());
-                    } else {
-                        result_list_el.push("".to_string());
-                    }
-                }
+            if let Some(field_value) =
+                get_queue_element_value(&ExpressionElement::FieldName(field_name.clone()), data_el)?
+            {
+                result_list_el.push(field_value.to_string());
+            } else {
+                result_list_el.push("".to_string());
             }
         }
 
@@ -328,6 +320,7 @@ fn get_queue_element_value(
         ExpressionElement::FieldName(field_name) => {
             // TODO: add nested access with . (test.kifla.smurph)
             let data_el = data.as_hashmap().map_err(|e| e.to_string())?;
+            // TODO: think about field case insensitive comparisson
             if let Some(field_value) = data_el.get(field_name) {
                 match field_value {
                     Pod::Null => Ok(None),

@@ -85,7 +85,17 @@ fn read_frontmatter(files: Vec<PathBuf>) -> Result<Vec<(PathBuf, Pod)>, Box<dyn 
         .filter_map(|path| {
             let content = fs::read_to_string(path).ok()?;
             let result = matter.parse(&content);
-            result.data.map(|data| (path.clone(), data))
+            result.data.map(|mut data| {
+                data.insert(
+                    "file_name".to_string(),
+                    Pod::String(path.file_name().unwrap().to_string_lossy().into_owned()),
+                );
+                data.insert(
+                    "file_path".to_string(),
+                    Pod::String(path.display().to_string()),
+                );
+                (path.clone(), data)
+            })
         })
         .collect();
 
