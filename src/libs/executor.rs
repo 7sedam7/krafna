@@ -3,6 +3,7 @@ use std::usize;
 
 use gray_matter::Pod;
 use hashbrown::HashSet;
+use regex::Regex;
 
 use crate::libs::data_fetcher::fetch_data;
 use crate::libs::parser::{ExpressionElement, FieldValue, Operator, OrderDirection, Query};
@@ -141,6 +142,8 @@ fn execute_where(condition: &Vec<ExpressionElement>, data: &Vec<Pod>) -> Result<
     let operator_precedence = |op: &Operator| match op {
         Operator::And | Operator::Or => 1,
         Operator::In
+        | Operator::Like
+        | Operator::NotLike
         | Operator::Eq
         | Operator::Neq
         | Operator::Lt
@@ -285,6 +288,12 @@ fn execute_operation(
         }
 
         // get values, return bools
+        Operator::Like => {
+            execute_val_comparison_operator(data, left, right, execute_operation_like)
+        }
+        Operator::NotLike => {
+            execute_val_comparison_operator(data, left, right, |a, b| !execute_operation_like(a, b))
+        }
         Operator::In => execute_val_comparison_operator(data, left, right, |a, b| b.contains(&a)),
         Operator::Lt => execute_val_comparison_operator(data, left, right, |a, b| a < b),
         Operator::Lte => execute_val_comparison_operator(data, left, right, |a, b| a <= b),
@@ -394,4 +403,13 @@ fn pod_array_to_field_value(list: &Vec<Pod>) -> FieldValue {
     }
 
     FieldValue::List(fv_list)
+}
+
+fn execute_operation_like(a: FieldValue, b: FieldValue) -> bool {
+    match (a, b) {
+        (FieldValue::String(a_str), FieldValue::String(b_str)) => {
+            Regex::new(&b_str).map_or(false, |re| re.is_match(&a_str))
+        }
+        _ => false,
+    }
 }

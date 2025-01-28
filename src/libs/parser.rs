@@ -18,7 +18,8 @@ pub enum Operator {
     Gte,
     Eq,
     Neq,
-    // Like,
+    Like,
+    NotLike,
     Plus,
     Minus,
     Multiply,
@@ -38,7 +39,8 @@ impl Operator {
         ">=" => Operator::Gte,
         "==" => Operator::Eq,
         "!=" => Operator::Neq,
-        // TODO: "LIKE" => Operator::Like,
+        "LIKE" => Operator::Like,
+        "NOT LIKE" => Operator::NotLike,
         "+" => Operator::Plus,
         "-" => Operator::Minus,
         "*" => Operator::Multiply,
@@ -1705,14 +1707,25 @@ mod tests {
 
     #[test]
     fn test_parse_non_existing_operator_different_first_char() -> Result<(), String> {
-        let operator = "NAN".to_string();
+        let operator = "BAN".to_string();
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(operator.chars());
 
         if Query::try_parse_operator(&mut peekable_query).is_ok() {
-            return Err("It should fail since there is no operator ANN!".to_string());
+            return Err("It should fail since there is no operator NAN!".to_string());
         }
 
-        assert_eq!('N', *peekable_query.peek().unwrap());
+        assert_eq!('B', *peekable_query.peek().unwrap());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_operator_not_like() -> Result<(), String> {
+        let operator = "NOT LIKE".to_string();
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(operator.chars());
+
+        let op = Query::try_parse_operator(&mut peekable_query)?;
+        assert_eq!(Operator::NotLike, op);
 
         Ok(())
     }

@@ -18,4 +18,5 @@ rayon = "1.8"
 hashbrown = "0.15.2"
 phf = { version = "0.11", features = ["macros"] }
 shellexpand = "3.1"
-chrono = "0.4"
+chrono = "0.4.39"
+regex = "1.11.1"
