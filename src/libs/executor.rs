@@ -342,7 +342,6 @@ fn execute_val_comparison_operator(
     };
 
     let mut indexes: HashSet<usize> = HashSet::new();
-    // TODO: fill the indexes mased on data that satisfies the condition
     for (index, data_el) in data.iter().enumerate() {
         let left_val = get_queue_element_value(left_el, data_el)?;
         let right_val = get_queue_element_value(right_el, data_el)?;

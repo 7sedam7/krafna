@@ -392,7 +392,6 @@ impl Query {
             }
         }
 
-        // TODO: Implement ORDER BY parsing
         Ok(order_by_options)
     }
 
@@ -814,10 +813,6 @@ impl Query {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[ignore = "TODO: implement this test"]
-    #[test]
-    fn parse_order_by() {}
 
     #[ignore = "TODO: implement this test"]
     #[test]
