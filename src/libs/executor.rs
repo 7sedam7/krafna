@@ -111,7 +111,8 @@ fn execute_where(
     // Define operator precedence
     let operator_precedence = |op: &Operator| match op {
         Operator::And | Operator::Or => 1,
-        Operator::Eq
+        Operator::In
+        | Operator::Eq
         | Operator::Neq
         | Operator::Lt
         | Operator::Lte
@@ -120,7 +121,6 @@ fn execute_where(
         Operator::Plus | Operator::Minus => 3,
         Operator::Multiply | Operator::Divide | Operator::FloorDivide => 4,
         Operator::Power => 5,
-        _ => 0,
     };
 
     for element in condition {
@@ -194,12 +194,12 @@ fn handle_operator_to_queue(
 
                 match _op {
                     Operator::Or | Operator::And => {
-                        let _right = bool_stack.pop().ok_or(
-                            "Expected operand on the bool stack, but found nothing!".to_string(),
-                        )?;
-                        let _left = bool_stack
+                        let _right = bool_stack
                             .pop()
-                            .ok_or("Expected operand on the bool stack, but found nothing!")?;
+                            .ok_or("Expected left operand on the bool stack, but found nothing!")?;
+                        let _left = bool_stack.pop().ok_or(
+                            "Expected right operand on the bool stack, but found nothing!",
+                        )?;
                         left = Operand::BoolElement(_left);
                         right = Operand::BoolElement(_right);
                     }
@@ -244,7 +244,6 @@ fn execute_operation(
     left: &Operand,
     right: &Operand,
 ) -> Result<Operand, String> {
-    // TODO: Handle operator
     match op {
         // get bools, return bool
         Operator::And => execute_bool_comparison_operation(
@@ -266,6 +265,7 @@ fn execute_operation(
         Operator::Neq => execute_val_comparison_operator(data, left, right, |a, b| a != b),
 
         // get values, return values
+        // TODO: Handle operator
         Operator::Plus => Err("PLUS operator not implemented!".to_string()),
         Operator::Minus => Err("MINUS operator not implemented!".to_string()),
         Operator::Multiply => Err("MULTIPLY operator not implemented!".to_string()),
