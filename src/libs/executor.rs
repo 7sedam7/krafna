@@ -5,8 +5,10 @@ use gray_matter::Pod;
 use hashbrown::HashSet;
 
 use crate::libs::data_fetcher::fetch_data;
-use crate::libs::parser::{ExpressionElement, FieldValue, Operator, Query};
+use crate::libs::parser::{ExpressionElement, FieldValue, Operator, OrderDirection, Query};
 use crate::libs::PeekableDeque;
+
+use super::parser::OrderByFieldOption;
 
 pub fn execute_query(
     query: String,
@@ -37,8 +39,9 @@ pub fn execute_query(
     // FROM
     let frontmatter_data = fetch_data(&query.from_function.unwrap())?;
     // WHERE
-    let filtered_result = execute_where(&query.where_expression, &frontmatter_data)?;
+    let mut filtered_result = execute_where(&query.where_expression, &frontmatter_data)?;
     // ORDER BY
+    execute_order_by(&query.order_by_fields, &mut filtered_result)?;
     // SELECT
     let result = execute_select(&query.select_fields, &filtered_result)?;
 
@@ -72,9 +75,7 @@ fn execute_select(fields: &Vec<String>, data: &Vec<Pod>) -> Result<Vec<String>, 
         let mut result_list_el = Vec::new();
 
         for field_name in fields {
-            if let Some(field_value) =
-                get_queue_element_value(&ExpressionElement::FieldName(field_name.clone()), data_el)?
-            {
+            if let Some(field_value) = get_field_value(field_name, data_el) {
                 result_list_el.push(field_value.to_string());
             } else {
                 result_list_el.push("".to_string());
@@ -85,6 +86,46 @@ fn execute_select(fields: &Vec<String>, data: &Vec<Pod>) -> Result<Vec<String>, 
     }
 
     Ok(result_list)
+}
+
+fn execute_order_by(fields: &Vec<OrderByFieldOption>, data: &mut Vec<Pod>) -> Result<(), String> {
+    data.sort_by(|a, b| {
+        // do some stuff
+        for orderby_field in fields {
+            let a_mby = get_field_value(&orderby_field.field_name, a);
+            let b_mby = get_field_value(&orderby_field.field_name, b);
+
+            let comparison = match (a_mby, b_mby) {
+                (None, _) => std::cmp::Ordering::Less,
+                (_, None) => std::cmp::Ordering::Greater,
+                (Some(a_val), Some(b_val)) => {
+                    if let (FieldValue::String(a_str), FieldValue::String(b_str)) = (&a_val, &b_val)
+                    {
+                        // TODO: try to compare as dates
+                        a_str.cmp(b_str)
+                    } else {
+                        a_val
+                            .partial_cmp(&b_val)
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    }
+                }
+            };
+
+            if comparison.is_ne() {
+                if orderby_field.order_direction == OrderDirection::ASC {
+                    return comparison;
+                } else if comparison.is_lt() {
+                    return std::cmp::Ordering::Greater;
+                } else {
+                    return std::cmp::Ordering::Less;
+                }
+            }
+        }
+
+        std::cmp::Ordering::Equal
+    });
+
+    Ok(())
 }
 
 fn execute_where(condition: &Vec<ExpressionElement>, data: &Vec<Pod>) -> Result<Vec<Pod>, String> {
@@ -313,30 +354,30 @@ fn get_queue_element_value(
     data: &Pod,
 ) -> Result<Option<FieldValue>, String> {
     match operand {
-        ExpressionElement::FieldName(field_name) => {
-            // TODO: add nested access with . (test.kifla.smurph)
-            let data_el = data.as_hashmap().map_err(|e| e.to_string())?;
-            // TODO: think about field case insensitive comparisson
-            if let Some(field_value) = data_el.get(field_name) {
-                match field_value {
-                    Pod::Null => Ok(None),
-                    Pod::String(str) => Ok(Some(FieldValue::String(str.clone()))),
-                    Pod::Float(num) => Ok(Some(FieldValue::Number(*num))),
-                    Pod::Integer(num) => Ok(Some(FieldValue::Number(*num as f64))),
-                    Pod::Boolean(bool) => Ok(Some(FieldValue::Bool(*bool))),
-                    Pod::Array(list) => Ok(Some(pod_array_to_field_value(list))),
-                    _ => Ok(None),
-                }
-            } else {
-                Ok(None)
-            }
-        }
+        ExpressionElement::FieldName(field_name) => Ok(get_field_value(field_name, data)),
         ExpressionElement::FieldValue(field_value) => Ok(Some(field_value.clone())),
         ExpressionElement::Function(_func) => {
             Err("TODO: Implement function execution!".to_string())
         }
         _ => Err(format!("Unsupported element: {:?}!", operand)),
     }
+}
+
+fn get_field_value(field_name: &String, data: &Pod) -> Option<FieldValue> {
+    // TODO: add nested access with . (test.kifla.smurph)
+    // TODO: think about field case insensitive comparisson
+    data.as_hashmap()
+        .ok()
+        .and_then(|map| map.get(field_name).cloned())
+        .and_then(|val| match val {
+            Pod::Null => None,
+            Pod::String(str) => Some(FieldValue::String(str.clone())),
+            Pod::Float(num) => Some(FieldValue::Number(num)),
+            Pod::Integer(num) => Some(FieldValue::Number(num as f64)),
+            Pod::Boolean(bool) => Some(FieldValue::Bool(bool)),
+            Pod::Array(list) => Some(pod_array_to_field_value(&list)),
+            _ => None,
+        })
 }
 
 fn pod_array_to_field_value(list: &Vec<Pod>) -> FieldValue {

@@ -736,7 +736,10 @@ impl Query {
             Ok(()) => Ok(OrderDirection::ASC),
             Err(_) => match Query::parse_keyword(peekable_query, "DESC", false) {
                 Ok(()) => Ok(OrderDirection::DESC),
-                Err(error) => Err(error),
+                Err(error) => Err(format!(
+                    "Expected ASC or DESC: {:?}!",
+                    peekable_query.display_state()
+                )),
             },
         }
     }
