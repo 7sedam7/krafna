@@ -60,24 +60,6 @@ fn get_markdown_files(dir: &String) -> Result<Vec<PathBuf>, Box<dyn Error>> {
     Ok(markdown_files)
 }
 
-// Sequencial
-// fn read_frontmatter(files: Vec<PathBuf>) -> Result<Vec<(PathBuf, Pod)>, Box<dyn Error>> {
-//     let matter = Matter::<YAML>::new();
-//     let mut results = Vec::new();
-//
-//     for path in files {
-//         let content = fs::read_to_string(&path)?;
-//         let result = matter.parse(&content);
-//
-//         if let Some(data) = result.data {
-//             results.push((path, data));
-//         }
-//     }
-//
-//     Ok(results)
-// }
-
-//
 fn read_frontmatter(files: Vec<PathBuf>) -> Result<Vec<Pod>, Box<dyn Error>> {
     let matter = Matter::<YAML>::new();
 
