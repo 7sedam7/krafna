@@ -604,7 +604,7 @@ impl Query {
         number.parse::<f64>().map_err(|e| e.to_string())
     }
 
-    fn parse_bool(peekable_query: &mut PeekableDeque<char>) -> Result<bool, String> {
+    fn parse_bool(_peekable_query: &mut PeekableDeque<char>) -> Result<bool, String> {
         Err("TODO: implement parse_bool".to_string())
     }
 

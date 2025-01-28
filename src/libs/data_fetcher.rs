@@ -5,7 +5,6 @@ use std::path::PathBuf;
 use chrono::{DateTime, Utc};
 use gray_matter::engine::YAML;
 use gray_matter::{Matter, Pod};
-use hashbrown::HashMap;
 use rayon::prelude::*;
 use walkdir::WalkDir;
 

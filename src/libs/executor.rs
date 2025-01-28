@@ -1,5 +1,4 @@
 use std::error::Error;
-use std::path::PathBuf;
 use std::usize;
 
 use gray_matter::Pod;
@@ -333,7 +332,9 @@ fn get_queue_element_value(
             }
         }
         ExpressionElement::FieldValue(field_value) => Ok(Some(field_value.clone())),
-        ExpressionElement::Function(func) => Err("TODO: Implement function execution!".to_string()),
+        ExpressionElement::Function(_func) => {
+            Err("TODO: Implement function execution!".to_string())
+        }
         _ => Err(format!("Unsupported element: {:?}!", operand)),
     }
 }

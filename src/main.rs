@@ -7,7 +7,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().collect();
 
     if args.len() < 2 {
-        println!("Usage: krafna <query> [--from <from_part>]");
+        eprintln!("Usage: krafna <query> [--from <from_part>]");
         return Ok(());
     }
 
@@ -22,12 +22,12 @@ fn main() -> Result<(), Box<dyn Error>> {
                 i += 2;
                 continue;
             } else {
-                println!("Error: --from requires a value");
+                eprintln!("Error: --from requires a value");
                 return Ok(());
             }
         } else {
-            println!("Error: Invalid argument '{}'", args[i]);
-            println!("Usage: krafna <query> [--from <from_part>]");
+            eprintln!("Error: Invalid argument '{}'", args[i]);
+            eprintln!("Usage: krafna <query> [--from <from_part>]");
             return Ok(());
         }
     }
@@ -38,7 +38,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 println!("{}", element);
             }
         }
-        Err(error) => println!("Error: {}", error),
+        Err(error) => eprintln!("Error: {}", error),
     }
 
     Ok(())
