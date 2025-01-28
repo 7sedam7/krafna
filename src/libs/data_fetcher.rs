@@ -1,9 +1,12 @@
-use gray_matter::engine::YAML;
-use gray_matter::{Matter, Pod};
-use rayon::prelude::*;
 use std::error::Error;
 use std::fs;
 use std::path::PathBuf;
+
+use chrono::{DateTime, Utc};
+use gray_matter::engine::YAML;
+use gray_matter::{Matter, Pod};
+use hashbrown::HashMap;
+use rayon::prelude::*;
 use walkdir::WalkDir;
 
 use super::{FieldValue, FunctionArg};
@@ -86,18 +89,43 @@ fn read_frontmatter(files: Vec<PathBuf>) -> Result<Vec<Pod>, Box<dyn Error>> {
             let content = fs::read_to_string(path).ok()?;
             let result = matter.parse(&content);
             result.data.map(|mut data| {
-                data.insert(
-                    "file_name".to_string(),
-                    Pod::String(path.file_name().unwrap().to_string_lossy().into_owned()),
-                );
-                data.insert(
-                    "file_path".to_string(),
-                    Pod::String(path.display().to_string()),
-                );
+                add_file_info(path, &mut data);
                 data
             })
         })
         .collect();
 
     Ok(results)
+}
+
+fn add_file_info(path: &PathBuf, data: &mut Pod) {
+    // NOTE: potential colision with file defined values
+    let _ = data.insert(
+        "file_name".to_string(),
+        Pod::String(path.file_name().unwrap().to_string_lossy().into_owned()),
+    );
+    let _ = data.insert(
+        "file_path".to_string(),
+        Pod::String(path.display().to_string()),
+    );
+    if let Ok(metadata) = fs::metadata(path) {
+        if let Ok(created_time) = metadata.created() {
+            let _ = data.insert(
+                "created".to_string(),
+                Pod::String(DateTime::<Utc>::from(created_time).to_rfc3339()),
+            );
+        }
+        if let Ok(modified_time) = metadata.modified() {
+            let _ = data.insert(
+                "modified".to_string(),
+                Pod::String(DateTime::<Utc>::from(modified_time).to_rfc3339()),
+            );
+        }
+        if let Ok(accessed_time) = metadata.accessed() {
+            let _ = data.insert(
+                "accessed".to_string(),
+                Pod::String(DateTime::<Utc>::from(accessed_time).to_rfc3339()),
+            );
+        }
+    }
 }
