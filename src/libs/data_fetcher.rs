@@ -9,14 +9,14 @@ use walkdir::WalkDir;
 use super::{FieldValue, FunctionArg};
 use crate::libs::parser::Function;
 
-pub fn fetch_data(from_function: &Function) -> Result<Vec<(PathBuf, Pod)>, Box<dyn Error>> {
+pub fn fetch_data(from_function: &Function) -> Result<Vec<Pod>, Box<dyn Error>> {
     match from_function.name.to_uppercase().as_str() {
         "FRONTMATTER_DATA" => fetch_frontmatter_data(&from_function.args),
         _ => Err(format!("Unknown function: {}", from_function.name).into()),
     }
 }
 
-fn fetch_frontmatter_data(args: &Vec<FunctionArg>) -> Result<Vec<(PathBuf, Pod)>, Box<dyn Error>> {
+fn fetch_frontmatter_data(args: &Vec<FunctionArg>) -> Result<Vec<Pod>, Box<dyn Error>> {
     if args.len() != 1 {
         return Err(format!(
             "Incorret amount of arguments, 1 String expected, but {} arguments found!",
@@ -76,11 +76,11 @@ fn get_markdown_files(dir: &String) -> Result<Vec<PathBuf>, Box<dyn Error>> {
 // }
 
 //
-fn read_frontmatter(files: Vec<PathBuf>) -> Result<Vec<(PathBuf, Pod)>, Box<dyn Error>> {
+fn read_frontmatter(files: Vec<PathBuf>) -> Result<Vec<Pod>, Box<dyn Error>> {
     let matter = Matter::<YAML>::new();
 
     // Convert to parallel iterator and collect results
-    let results: Vec<(PathBuf, Pod)> = files
+    let results: Vec<Pod> = files
         .par_iter()
         .filter_map(|path| {
             let content = fs::read_to_string(path).ok()?;
@@ -94,7 +94,7 @@ fn read_frontmatter(files: Vec<PathBuf>) -> Result<Vec<(PathBuf, Pod)>, Box<dyn 
                     "file_path".to_string(),
                     Pod::String(path.display().to_string()),
                 );
-                (path.clone(), data)
+                data
             })
         })
         .collect();

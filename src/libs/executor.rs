@@ -60,7 +60,7 @@ enum Operand {
     BoolElement(HashSet<usize>),
 }
 
-fn execute_select(fields: &Vec<String>, data: &Vec<(PathBuf, Pod)>) -> Result<Vec<String>, String> {
+fn execute_select(fields: &Vec<String>, data: &Vec<Pod>) -> Result<Vec<String>, String> {
     // TODO: implement * to select all values
     // TODO: implement function calls in select
     // TODO: Return Vec<Vec<FieldValue>> and output different formats depending on flagls
@@ -69,7 +69,7 @@ fn execute_select(fields: &Vec<String>, data: &Vec<(PathBuf, Pod)>) -> Result<Ve
 
     result_list.push(fields.join("\t"));
 
-    for (path_buf, data_el) in data {
+    for data_el in data {
         let mut result_list_el = Vec::new();
 
         for field_name in fields {
@@ -88,10 +88,7 @@ fn execute_select(fields: &Vec<String>, data: &Vec<(PathBuf, Pod)>) -> Result<Ve
     Ok(result_list)
 }
 
-fn execute_where(
-    condition: &Vec<ExpressionElement>,
-    data: &Vec<(PathBuf, Pod)>,
-) -> Result<Vec<(PathBuf, Pod)>, String> {
+fn execute_where(condition: &Vec<ExpressionElement>, data: &Vec<Pod>) -> Result<Vec<Pod>, String> {
     if condition.is_empty() {
         return Ok(data.clone());
     }
@@ -173,7 +170,7 @@ fn handle_operator_to_queue(
     stack: &mut Vec<ExpressionElement>,
     eval_stack: &mut Vec<ExpressionElement>,
     bool_stack: &mut Vec<HashSet<usize>>,
-    data: &Vec<(PathBuf, Pod)>,
+    data: &Vec<Pod>,
 ) -> Result<(), String> {
     let op;
     let left;
@@ -231,7 +228,7 @@ fn handle_operator_to_queue(
 }
 
 fn execute_operation(
-    data: &Vec<(PathBuf, Pod)>,
+    data: &Vec<Pod>,
     op: &Operator,
     left: &Operand,
     right: &Operand,
@@ -283,7 +280,7 @@ fn execute_bool_comparison_operation(
 }
 
 fn execute_val_comparison_operator(
-    data: &Vec<(PathBuf, Pod)>,
+    data: &Vec<Pod>,
     left: &Operand,
     right: &Operand,
     op: fn(FieldValue, FieldValue) -> bool,
@@ -297,7 +294,7 @@ fn execute_val_comparison_operator(
 
     let mut indexes: HashSet<usize> = HashSet::new();
     // TODO: fill the indexes mased on data that satisfies the condition
-    for (index, (_, data_el)) in data.iter().enumerate() {
+    for (index, data_el) in data.iter().enumerate() {
         let left_val = get_queue_element_value(left_el, data_el)?;
         let right_val = get_queue_element_value(right_el, data_el)?;
 
