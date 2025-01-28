@@ -6,6 +6,7 @@ use chrono::{DateTime, Utc};
 use gray_matter::engine::YAML;
 use gray_matter::{Matter, Pod};
 use rayon::prelude::*;
+use regex::Regex;
 use walkdir::WalkDir;
 
 use super::{FieldValue, FunctionArg};
@@ -37,6 +38,13 @@ fn fetch_frontmatter_data(args: &Vec<FunctionArg>) -> Result<Vec<Pod>, Box<dyn E
     let frontmatters = read_frontmatter(files)?;
 
     Ok(frontmatters)
+}
+
+pub fn fetch_code_snippets(dir: &String, lang: String) -> Result<Vec<String>, Box<dyn Error>> {
+    let files = get_markdown_files(&shellexpand::tilde(&dir).into_owned())?;
+    let code_snippets = read_code_snippet(files, &lang)?;
+
+    Ok(code_snippets)
 }
 
 fn get_markdown_files(dir: &String) -> Result<Vec<PathBuf>, Box<dyn Error>> {
@@ -74,6 +82,28 @@ fn read_frontmatter(files: Vec<PathBuf>) -> Result<Vec<Pod>, Box<dyn Error>> {
                 data
             })
         })
+        .collect();
+
+    Ok(results)
+}
+
+fn read_code_snippet(files: Vec<PathBuf>, lang: &String) -> Result<Vec<String>, Box<dyn Error>> {
+    let pattern = format!(r"```\s*{}\s*([\s\S]*?)```", lang);
+    let re = Regex::new(&pattern)?;
+
+    let results: Vec<String> = files
+        .par_iter()
+        .filter_map(|path| {
+            let content = fs::read_to_string(path).ok()?;
+
+            let matches: Vec<String> = re
+                .captures_iter(&content)
+                .map(|cap| cap[1].replace('\n', " ").trim().to_string())
+                .collect();
+
+            Some(matches)
+        })
+        .flatten()
         .collect();
 
     Ok(results)

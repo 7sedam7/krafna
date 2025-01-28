@@ -12,7 +12,7 @@ use crate::libs::PeekableDeque;
 use super::parser::OrderByFieldOption;
 
 pub fn execute_query(
-    query: String,
+    query: &String,
     from_query: Option<String>,
 ) -> Result<Vec<String>, Box<dyn Error>> {
     let mut query = match query.parse::<Query>() {

@@ -20,3 +20,4 @@ phf = { version = "0.11", features = ["macros"] }
 shellexpand = "3.1"
 chrono = "0.4.39"
 regex = "1.11.1"
+clap = { version = "4.5.27", features = ["derive"] }
