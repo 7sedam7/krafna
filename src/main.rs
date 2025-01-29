@@ -1,6 +1,6 @@
 use std::error::Error;
 
-use clap::Parser;
+use clap::{Parser, ValueHint};
 
 use krafna::libs::data_fetcher::fetch_code_snippets;
 use krafna::libs::executor::execute_query;
@@ -10,15 +10,16 @@ use krafna::libs::executor::execute_query;
 #[command(about = "Obsidian `dataview` alternative.", long_about = None)]
 struct Args {
     /// The query to execute
+    #[arg(value_hint = ValueHint::Other)]
     query: Option<String>,
 
     /// From option in case you are implementing querying for specific FROM that you don't want to
     /// specify every time
-    #[arg(long)]
+    #[arg(long, value_hint = ValueHint::Other)]
     from: Option<String>,
 
     /// Find option to find all krafna snippets within a dir
-    #[arg(long)]
+    #[arg(long, value_hint = ValueHint::DirPath)]
     find: Option<String>,
 }
 
