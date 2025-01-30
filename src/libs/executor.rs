@@ -13,8 +13,9 @@ use super::parser::OrderByFieldOption;
 
 pub fn execute_query(
     query: &String,
+    include_fields: Vec<String>,
     from_query: Option<String>,
-) -> Result<Vec<Pod>, Box<dyn Error>> {
+) -> Result<(Vec<String>, Vec<Pod>), Box<dyn Error>> {
     let mut query = match query.parse::<Query>() {
         Ok(q) => q,
         Err(error) => return Err(error.into()),
@@ -44,9 +45,11 @@ pub fn execute_query(
     // ORDER BY
     execute_order_by(&query.order_by_fields, &mut result)?;
     // SELECT
-    execute_select(&query.select_fields, &mut result);
+    let mut select_fields = include_fields.clone();
+    select_fields.extend(query.select_fields);
+    execute_select(&select_fields, &mut result);
 
-    Ok(result)
+    Ok((select_fields, result))
 }
 
 #[derive(Debug, PartialEq, Clone)]

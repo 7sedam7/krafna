@@ -26,13 +26,17 @@ struct Args {
     /// Output results in JSON format
     #[arg(long)]
     json: bool,
+
+    /// include SELECT fields "field1,field2"
+    #[arg(long, value_delimiter = ',')]
+    include_fields: Vec<String>,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
 
     match args.query {
-        Some(query) => do_query(&query, args.from, args.json),
+        Some(query) => do_query(&query, args.include_fields, args.from, args.json),
         None => {
             if let Some(find) = args.find {
                 find_files(&find, args.json);
@@ -45,14 +49,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn do_query(query: &String, from: Option<String>, to_json: bool) {
-    match execute_query(query, from) {
-        Ok(res) => {
+fn do_query(query: &String, include_fields: Vec<String>, from: Option<String>, to_json: bool) {
+    match execute_query(query, include_fields, from) {
+        Ok((fields, res)) => {
             if to_json {
                 let json = pods_to_json(res);
                 println!("{}", json);
             } else {
-                let tsv = pods_to_tsv(res);
+                let tsv = pods_to_tsv(fields, res);
                 println!("{}", tsv);
             }
         }

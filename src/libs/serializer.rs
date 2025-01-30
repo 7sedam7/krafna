@@ -12,17 +12,10 @@ pub fn pods_to_json(pods: Vec<Pod>) -> String {
     serde_json::to_string(&json_values).unwrap_or_else(|_| "[]".to_string())
 }
 
-pub fn pods_to_tsv(pods: Vec<Pod>) -> String {
+pub fn pods_to_tsv(field_names: Vec<String>, pods: Vec<Pod>) -> String {
     if pods.is_empty() {
         return String::new();
     }
-
-    // Get all unique field names from all pods
-    let field_names: Vec<String> = pods[0]
-        .as_hashmap()
-        .ok()
-        .map(|map| map.keys().cloned().collect())
-        .unwrap_or_default();
 
     // Build header row
     let header = field_names.join("\t");
