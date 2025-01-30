@@ -387,6 +387,8 @@ dependencies = [
  "phf",
  "rayon",
  "regex",
+ "serde",
+ "serde_json",
  "shellexpand",
  "walkdir",
 ]

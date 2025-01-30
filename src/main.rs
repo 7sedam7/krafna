@@ -4,6 +4,7 @@ use clap::{Parser, ValueHint};
 
 use krafna::libs::data_fetcher::fetch_code_snippets;
 use krafna::libs::executor::execute_query;
+use krafna::libs::serializer::{pods_to_json, pods_to_tsv};
 
 #[derive(Parser, Debug)]
 #[command(name = "krafna")]
@@ -21,16 +22,20 @@ struct Args {
     /// Find option to find all krafna snippets within a dir
     #[arg(long, value_hint = ValueHint::DirPath)]
     find: Option<String>,
+
+    /// Output results in JSON format
+    #[arg(long)]
+    json: bool,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
 
     match args.query {
-        Some(query) => do_query(&query, args.from),
+        Some(query) => do_query(&query, args.from, args.json),
         None => {
             if let Some(find) = args.find {
-                find_files(&find);
+                find_files(&find, args.json);
             } else {
                 print_help();
             }
@@ -40,20 +45,33 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn do_query(query: &String, from: Option<String>) {
+fn do_query(query: &String, from: Option<String>, to_json: bool) {
     match execute_query(query, from) {
         Ok(res) => {
-            for element in res {
-                println!("{}", element);
+            if to_json {
+                let json = pods_to_json(res);
+                println!("{}", json);
+            } else {
+                let tsv = pods_to_tsv(res);
+                println!("{}", tsv);
             }
         }
         Err(error) => eprintln!("Error: {}", error),
     }
 }
 
-fn find_files(dir: &String) {
+fn find_files(dir: &String, to_json: bool) {
     match fetch_code_snippets(dir, "krafna".to_string()) {
-        Ok(snippets) => println!("{:?}", snippets),
+        Ok(snippets) => {
+            if to_json {
+                println!(
+                    "{}",
+                    serde_json::to_string(&snippets).unwrap_or_else(|_| "[]".to_string())
+                );
+            } else {
+                println!("{}", snippets.join("\n"));
+            }
+        }
         Err(error) => eprintln!("{}", error),
     }
 }

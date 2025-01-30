@@ -14,7 +14,7 @@ use super::parser::OrderByFieldOption;
 pub fn execute_query(
     query: &String,
     from_query: Option<String>,
-) -> Result<Vec<String>, Box<dyn Error>> {
+) -> Result<Vec<Pod>, Box<dyn Error>> {
     let mut query = match query.parse::<Query>() {
         Ok(q) => q,
         Err(error) => return Err(error.into()),
@@ -40,19 +40,11 @@ pub fn execute_query(
     // FROM
     let frontmatter_data = fetch_data(&query.from_function.unwrap())?;
     // WHERE
-    let mut filtered_result = execute_where(&query.where_expression, &frontmatter_data)?;
+    let mut result = execute_where(&query.where_expression, &frontmatter_data)?;
     // ORDER BY
-    execute_order_by(&query.order_by_fields, &mut filtered_result)?;
+    execute_order_by(&query.order_by_fields, &mut result)?;
     // SELECT
-    let result = execute_select(&query.select_fields, &filtered_result)?;
-
-    //for (path, frontmatter) in frontmatter_data {
-    //for (path, frontmatter) in filtered_result {
-    //    println!("File: {}", path.display());
-    //    // println!("Frontmatter: {:#?}", frontmatter.as_vec()?);
-    //    println!("Frontmatter: {:#?}", frontmatter.as_hashmap()?.get("tags"));
-    //    println!("---");
-    //}
+    execute_select(&query.select_fields, &mut result);
 
     Ok(result)
 }
@@ -63,42 +55,15 @@ enum Operand {
     BoolElement(HashSet<usize>),
 }
 
-fn execute_select(fields: &Vec<String>, data: &Vec<Pod>) -> Result<Vec<String>, String> {
+fn execute_select(fields: &Vec<String>, data: &mut Vec<Pod>) {
     // TODO: implement * to select all values
     // TODO: implement function calls in select
-    // TODO: Return Vec<Vec<FieldValue>> and output different formats depending on flagls
-    // (converters implemented separately, json, tsv)
-    let has_file_name = fields.contains(&"file_name".to_string());
 
-    let mut result_list = Vec::new();
-    if has_file_name {
-        result_list.push(fields.join("\t"));
-    } else {
-        result_list.push(format!("field_name\t{}", fields.join("\t")));
-    }
-
-    for data_el in data {
-        let mut result_list_el = Vec::new();
-
-        if !has_file_name {
-            result_list_el.push(
-                get_field_value(&"file_name".to_string(), data_el)
-                    .unwrap()
-                    .to_string(),
-            );
+    for pod in data {
+        if let Pod::Hash(ref mut hashmap) = *pod {
+            hashmap.retain(|k, _| k == "file_name" || fields.contains(k));
         }
-        for field_name in fields {
-            if let Some(field_value) = get_field_value(field_name, data_el) {
-                result_list_el.push(field_value.to_string());
-            } else {
-                result_list_el.push("".to_string());
-            }
-        }
-
-        result_list.push(result_list_el.join("\t"));
     }
-
-    Ok(result_list)
 }
 
 fn execute_order_by(fields: &Vec<OrderByFieldOption>, data: &mut Vec<Pod>) -> Result<(), String> {
@@ -383,7 +348,7 @@ fn get_queue_element_value(
     }
 }
 
-fn get_field_value(field_name: &String, data: &Pod) -> Option<FieldValue> {
+pub fn get_field_value(field_name: &String, data: &Pod) -> Option<FieldValue> {
     // TODO: add nested access with . (test.kifla.smurph)
     // TODO: think about field case insensitive comparisson
     data.as_hashmap()

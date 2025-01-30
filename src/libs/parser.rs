@@ -3,6 +3,7 @@
 
 use core::f64;
 use hashbrown::HashSet;
+use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
 use crate::libs::peekable_deque::PeekableDeque;
@@ -101,7 +102,8 @@ impl Function {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
 pub enum FieldValue {
     List(Vec<FieldValue>), // TODO: implement parsing of lists in a query []
     String(String),
