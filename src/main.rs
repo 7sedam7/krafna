@@ -52,8 +52,7 @@ fn do_query(query: &String, from: Option<String>) {
 }
 
 fn find_files(dir: &String) {
-    // TODO: replace with krafna
-    match fetch_code_snippets(dir, "dataview".to_string()) {
+    match fetch_code_snippets(dir, "krafna".to_string()) {
         Ok(snippets) => println!("{:?}", snippets),
         Err(error) => eprintln!("{}", error),
     }

@@ -68,13 +68,25 @@ fn execute_select(fields: &Vec<String>, data: &Vec<Pod>) -> Result<Vec<String>, 
     // TODO: implement function calls in select
     // TODO: Return Vec<Vec<FieldValue>> and output different formats depending on flagls
     // (converters implemented separately, json, tsv)
-    let mut result_list = Vec::new();
+    let has_file_name = fields.contains(&"file_name".to_string());
 
-    result_list.push(fields.join("\t"));
+    let mut result_list = Vec::new();
+    if has_file_name {
+        result_list.push(fields.join("\t"));
+    } else {
+        result_list.push(format!("field_name\t{}", fields.join("\t")));
+    }
 
     for data_el in data {
         let mut result_list_el = Vec::new();
 
+        if !has_file_name {
+            result_list_el.push(
+                get_field_value(&"file_name".to_string(), data_el)
+                    .unwrap()
+                    .to_string(),
+            );
+        }
         for field_name in fields {
             if let Some(field_value) = get_field_value(field_name, data_el) {
                 result_list_el.push(field_value.to_string());
