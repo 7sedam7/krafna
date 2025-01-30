@@ -11,6 +11,10 @@ path = "src/lib.rs"
 name = "krafna"
 path = "src/main.rs"
 
+[profile.release]
+lto = true
+opt-level = 3
+
 [dependencies]
 gray_matter = "0.2"
 walkdir = "2.4"
