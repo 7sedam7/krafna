@@ -479,6 +479,7 @@ impl Query {
         Query::parse_whitespaces(peekable_query);
 
         loop {
+            // TODO: allow fields without operator for cases where field is boolean
             match Query::try_parse_operator(peekable_query) {
                 Ok(op) => expression_elements.push(ExpressionElement::Operator(op)),
                 Err(_) => return Ok(()),
