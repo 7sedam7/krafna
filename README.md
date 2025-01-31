@@ -1,31 +1,79 @@
-# Installation
+# Krafna
 
-# Usage
+Krafna is a terminal-based alternative to Obsidian's Dataview plugin, allowing you to query your Markdown files using standard SQL syntax.
 
-`cargo run 'select file_path, tags where "todo" in tags' --from 'frontmatter_data("~/.notes")' | from tsv`
-`cargo run 'select file_path, tags from frontmatter_data("~/.notes") where "todo" in tags' | from tsv`
+## Features
 
-# Development
-## Git Hooks
+- Query Markdown files in a directory using SQL-like syntax
+- Support for frontmatter data extraction
+- Flexible output formats (TSV and JSON)
+- Compatible with Neovim plugin [Perec](https://github.com/7sedam7/perec.nvim)
 
-This repository uses the following Git hooks to ensure code quality and consistency.
+## Installation
 
-## Pre-commit Hook
+### Cargo (Recommended)
 
-The pre-commit hook runs `cargo test` to ensure that all tests pass before committing.
-
-
-### Setup
-1 Navigate to the .git/hooks directory in your repository.
-2 Create a file named pre-commit and add the following content:
-```sh
-#!/bin/sh
-# Run cargo test and check for errors
-echo "Running cargo test..."
-cargo test
-if [ $? -ne 0 ]; then
-    echo "Tests failed. Commit aborted."
-    exit 1
-fi
+```bash
+cargo install krafna
 ```
-3 Make the script executable: `chmod +x .git/hooks/pre-commit`
+
+### Homebrew
+
+```bash
+brew tap 7sedam7/krafna
+brew install krafna
+```
+
+### Chocolatey
+
+```powershell
+choco install krafna
+```
+
+### Scoop
+
+```powershell
+scoop bucket add 7sedam7 https://github.com/7sedam7/scoop-bucket
+scoop install krafna
+```
+
+## Usage
+
+### Basic Query
+
+```bash
+krafna "SELECT title, tags FROM FRONTMATTER_DATA('~/.notes')"
+```
+
+### Find Files
+
+```bash
+krafna --find ~/.notes
+```
+
+### Output as JSON
+
+```bash
+krafna "SELECT * FROM FRONTMATTER_DATA('~/.notes')" --json
+```
+
+### Include Specific Fields
+
+```bash
+krafna "SELECT * FROM FRONTMATTER_DATA('~/.notes')" --include-fields title,tags
+```
+
+## Syntax Differences from Dataview
+
+- Uses standard SQL syntax
+- Selection of "table" to query is done with `FROM FRONTMATTER_DATA("<path>")` function, that makes all md files within <path> a row (their frontmatter data). Currently no other sources and no JOINs. I plan to add them later.
+- Not all Dataview features are implemented yet
+
+## Neovim Integration
+
+Use with the [Perec](https://github.com/7sedam7/perec) Neovim plugin for seamless integration.
+
+
+## Author
+
+[7sedam7](https://github.com/7sedam7)
