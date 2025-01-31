@@ -177,17 +177,23 @@ impl FromStr for Query {
 
     fn from_str(query: &str) -> Result<Self, Self::Err> {
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
+        Query::parse_whitespaces(&mut peekable_query);
 
-        let select_fields = match Query::parse_select(&mut peekable_query) {
-            Ok(sf) => sf,
-            Err(error) => {
-                return Err(format!(
-                    "Error parsing SELECT: {}, Query: \"{}\"",
-                    error,
-                    peekable_query.display_state()
-                ))
+        let mut select_fields = Vec::new();
+        if let Some(&peeked_char) = peekable_query.peek() {
+            if peeked_char == 's' || peeked_char == 'S' {
+                select_fields = match Query::parse_select(&mut peekable_query) {
+                    Ok(sf) => sf,
+                    Err(error) => {
+                        return Err(format!(
+                            "Error parsing SELECT: {}, Query: \"{}\"",
+                            error,
+                            peekable_query.display_state()
+                        ))
+                    }
+                };
             }
-        };
+        }
 
         // parse_SELECT parses whitespace after its fields
 
