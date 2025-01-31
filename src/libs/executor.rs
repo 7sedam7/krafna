@@ -46,7 +46,12 @@ pub fn execute_query(
     execute_order_by(&query.order_by_fields, &mut result)?;
     // SELECT
     let mut select_fields = include_fields.clone();
-    select_fields.extend(query.select_fields);
+    select_fields.extend(
+        query
+            .select_fields
+            .into_iter()
+            .filter(|sf| !include_fields.contains(sf)),
+    );
     execute_select(&select_fields, &mut result);
 
     Ok((select_fields, result))
