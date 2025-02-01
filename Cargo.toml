@@ -1,6 +1,15 @@
 [package]
 name = "krafna"
 version = "0.1.0"
+authors = ["Joel Kunst <7sedam7@gmail.com>"]
+description = "Krafna is a terminal-based alternative to Obsidian's Dataview plugin, allowing you to query your Markdown files using standard SQL syntax."
+license = "MIT"
+repository = "https://github.com/7sedam7/krafna"
+documentation = "https://docs.rs/krafna"
+homepage = "https://github.com/7sedam7/krafna"
+readme = "README.md"
+categories = ["command-line-utilities", "text-processing", "data-structures"]
+keywords = ["cli", "obsidian", "markdown", "sql"]
 edition = "2021"
 
 [lib]
