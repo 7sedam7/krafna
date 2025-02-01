@@ -1,0 +1,91 @@
+name: Release
+
+# Only trigger on version tags
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+*'  # Matches v1.2.3, v1.2.3-rc1, etc.
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+      - uses: actions/checkout@v2
+      
+      # Get version from tag
+      - name: Get version from tag
+        id: get_version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+      
+      # Create GitHub release
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ steps.get_version.outputs.version }}
+          draft: false
+          prerelease: false
+          body: |
+            Release ${{ steps.get_version.outputs.version }}
+            
+            ## Changes
+            
+            <!-- List changes here -->
+
+  build-and-upload:
+    needs: create-release
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: krafna-linux-x86_64.tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: krafna-windows-x86_64.zip
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_name: krafna-macos-x86_64.tar.gz
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v2
+      
+      # Setup Rust
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
+          override: true
+      
+      # Build
+      - uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --target ${{ matrix.target }}
+      
+      # Package
+      - name: Package Binary
+        shell: bash
+        run: |
+          cd target/${{ matrix.target }}/release
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            7z a ../../../${{ matrix.artifact_name }} krafna.exe
+          else
+            tar czf ../../../${{ matrix.artifact_name }} krafna
+          fi
+      
+      # Upload to release
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./${{ matrix.artifact_name }}
+          asset_name: ${{ matrix.artifact_name }}
+          asset_content_type: application/octet-stream
