@@ -24,19 +24,6 @@ brew tap 7sedam7/krafna
 brew install krafna
 ```
 
-### Chocolatey
-
-```powershell
-choco install krafna
-```
-
-### Scoop
-
-```powershell
-scoop bucket add 7sedam7 https://github.com/7sedam7/scoop-bucket
-scoop install krafna
-```
-
 ## Usage
 
 ### Basic Query
