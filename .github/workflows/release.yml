@@ -1,91 +1,121 @@
-name: Release
-
-# Only trigger on version tags
+name: release
 on:
   push:
-    tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+*'  # Matches v1.2.3, v1.2.3-rc1, etc.
-
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+env:
+  CARGO_INCREMENTAL: 0
+permissions:
+  contents: write
 jobs:
-  create-release:
-    runs-on: ubuntu-latest
-    outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
-    steps:
-      - uses: actions/checkout@v2
-      
-      # Get version from tag
-      - name: Get version from tag
-        id: get_version
-        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-      
-      # Create GitHub release
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ steps.get_version.outputs.version }}
-          draft: false
-          prerelease: false
-          body: |
-            Release ${{ steps.get_version.outputs.version }}
-            
-            ## Changes
-            
-            <!-- List changes here -->
-
-  build-and-upload:
-    needs: create-release
+  release:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            artifact_name: krafna-linux-x86_64.tar.gz
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            artifact_name: krafna-windows-x86_64.zip
+            target: x86_64-unknown-linux-musl
+            deb: true
+          - os: ubuntu-latest
+            target: arm-unknown-linux-musleabihf
+          - os: ubuntu-latest
+            target: armv7-unknown-linux-musleabihf
+            deb: true
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            deb: true
+          - os: ubuntu-latest
+            target: i686-unknown-linux-musl
+            deb: true
+          - os: ubuntu-latest
+            target: aarch64-linux-android
           - os: macos-latest
             target: x86_64-apple-darwin
-            artifact_name: krafna-macos-x86_64.tar.gz
-    runs-on: ${{ matrix.os }}
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
     steps:
-      - uses: actions/checkout@v2
-      
-      # Setup Rust
-      - uses: actions-rs/toolchain@v1
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Get version
+        id: get_version
+        uses: SebRollen/toml-action@v1.2.0
+        with:
+          file: Cargo.toml
+          field: package.version
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-          target: ${{ matrix.target }}
+          profile: minimal
           override: true
-      
-      # Build
-      - uses: actions-rs/cargo@v1
+          target: ${{ matrix.target }}
+      - name: Setup cache
+        uses: Swatinem/rust-cache@v2.7.7
+        with:
+          key: ${{ matrix.target }}
+      - name: Install cross
+        if: ${{ runner.os == 'Linux' }}
+        uses: actions-rs/cargo@v1
+        with:
+          command: install
+          args: --color=always --git=https://github.com/cross-rs/cross.git --locked --rev=02bf930e0cb0c6f1beffece0788f3932ecb2c7eb --verbose cross
+      - name: Build binary
+        uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --release --target ${{ matrix.target }}
-      
-      # Package
-      - name: Package Binary
-        shell: bash
-        run: |
-          cd target/${{ matrix.target }}/release
-          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            7z a ../../../${{ matrix.artifact_name }} krafna.exe
-          else
-            tar czf ../../../${{ matrix.artifact_name }} krafna
-          fi
-      
-      # Upload to release
-      - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          args: --release --locked --target=${{ matrix.target }} --color=always --verbose
+          use-cross: ${{ runner.os == 'Linux' }}
+      - name: Install cargo-deb
+        if: ${{ matrix.deb == true }}
+        uses: actions-rs/install@v0.1
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./${{ matrix.artifact_name }}
-          asset_name: ${{ matrix.artifact_name }}
-          asset_content_type: application/octet-stream
+          crate: cargo-deb
+      - name: Build deb
+        if: ${{ matrix.deb == true }}
+        uses: actions-rs/cargo@v1
+        with:
+          command: deb
+          args: --no-build --no-strip --output=. --target=${{ matrix.target }}
+      - name: Package (*nix)
+        if: runner.os != 'Windows'
+        run: |
+          tar -cv CHANGELOG.md LICENSE README.md man/ \
+            -C contrib/ completions/ -C ../ \
+            -C target/${{ matrix.target }}/release/ krafna |
+            gzip --best > \
+            krafna-${{ steps.get_version.outputs.value }}-${{ matrix.target }}.tar.gz
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          7z a krafna-${{ steps.get_version.outputs.value }}-${{ matrix.target }}.zip `
+            CHANGELOG.md LICENSE README.md ./man/ ./contrib/completions/ `
+            ./target/${{ matrix.target }}/release/krafna.exe
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: |
+            *.deb
+            *.tar.gz
+            *.zip
+      - name: Create release
+        if: |
+          github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'chore(release)')
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: |
+            *.deb
+            *.tar.gz
+            *.zip
+          name: ${{ steps.get_version.outputs.value }}
+          tag_name: ""
