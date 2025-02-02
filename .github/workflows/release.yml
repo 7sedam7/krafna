@@ -104,8 +104,10 @@ jobs:
       #     field: package.version
       - name: Set version from tag
         id: set_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          VERSION=${VERSION//v/}  # This removes the 'v' prefix, if present.
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
 
       - name: Install Rust
         uses: actions-rs/toolchain@v1
