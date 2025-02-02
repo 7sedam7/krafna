@@ -108,7 +108,7 @@ jobs:
             *.zip
       - name: Create release
         if: |
-          github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'chore(release)')
+          github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, '[release]')
         uses: softprops/action-gh-release@v2
         with:
           draft: true
@@ -116,5 +116,5 @@ jobs:
             *.deb
             *.tar.gz
             *.zip
-          name: ${{ steps.get_version.outputs.value }}
-          tag_name: ""
+          name: Release v${{ steps.get_version.outputs.value }}
+          tag_name: "v${{ steps.get_version.outputs.value }}"
