@@ -96,12 +96,16 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Get version
-        id: get_version
-        uses: SebRollen/toml-action@v1.2.0
-        with:
-          file: Cargo.toml
-          field: package.version
+      # - name: Get version
+      #   id: get_version
+      #   uses: SebRollen/toml-action@v1.2.0
+      #   with:
+      #     file: Cargo.toml
+      #     field: package.version
+      - name: Set version from tag
+        id: set_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+
 
       - name: Install Rust
         uses: actions-rs/toolchain@v1
@@ -149,12 +153,12 @@ jobs:
           tar -cv CHANGELOG.md README.md \
             -C target/${{ matrix.target }}/release/ krafna |
             gzip --best > \
-            krafna-${{ steps.get_version.outputs.value }}-${{ matrix.target }}.tar.gz
+            krafna-${{ env.VERSION }}-${{ matrix.target }}.tar.gz
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
         run: |
-          7z a krafna-${{ steps.get_version.outputs.value }}-${{ matrix.target }}.zip `
+          7z a krafna-${{ env.VERSION }}-${{ matrix.target }}.zip `
             CHANGELOG.md README.md `
             ./target/${{ matrix.target }}/release/krafna.exe
 
@@ -168,7 +172,6 @@ jobs:
             *.zip
 
       - name: Create GitHub release
-        # if: github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, '[release]')
         uses: softprops/action-gh-release@v2
         with:
           draft: false
@@ -176,38 +179,38 @@ jobs:
             *.deb
             *.tar.gz
             *.zip
-          name: Release v${{ steps.get_version.outputs.value }}
-          tag_name: "v${{ steps.get_version.outputs.value }}"
+          name: Release v${{ env.VERSION }}
+          tag_name: "v${{ env.VERSION }}"
 
   crates_io_publish:
-      name: Publish (crates.io)
-      needs: github_release
+    name: Publish (crates.io)
+    needs: github_release
 
-      runs-on: ubuntu-latest
-      timeout-minutes: 10
-      steps:
-        - uses: actions/checkout@v4
-        - uses: dtolnay/rust-toolchain@stable
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
 
-        - name: cargo-release Cache
-          id: cargo_release_cache
-          uses: actions/cache@v4
-          with:
-            path: ~/.cargo/bin/cargo-release
-            key: ${{ runner.os }}-cargo-release
+      - name: cargo-release Cache
+        id: cargo_release_cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-release
+          key: ${{ runner.os }}-cargo-release
 
-        - run: cargo install cargo-release
-          if: steps.cargo_release_cache.outputs.cache-hit != 'true'
+      - run: cargo install cargo-release
+        if: steps.cargo_release_cache.outputs.cache-hit != 'true'
 
-        - name: cargo login
-          run: cargo login ${{ secrets.CRATES_IO_API_TOKEN }}
+      - name: cargo login
+        run: cargo login ${{ secrets.CRATES_IO_API_TOKEN }}
 
-        - name: "cargo release publish"
-          run: |-
-            cargo release \
-              publish \
-              --workspace \
-              --all-features \
-              --allow-branch HEAD \
-              --no-confirm \
-              --execute
+      - name: "cargo release publish"
+        run: |-
+          cargo release \
+            publish \
+            --workspace \
+            --all-features \
+            --allow-branch HEAD \
+            --no-confirm \
+            --execute
