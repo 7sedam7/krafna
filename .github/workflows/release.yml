@@ -2,7 +2,6 @@ name: Release and Publish
 
 on:
   push:
-    branches: [main]
     tags:
       - 'v*'  # Trigger only when a tag starting with 'v' is pushed (e.g., v1.0.0)
   pull_request:
@@ -15,8 +14,52 @@ permissions:
   contents: write
 
 jobs:
+  audit:
+    name: Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        # Needed for audit-check@v2
+      - name: generate Cargo.lock
+        run: cargo generate-lockfile
+      - uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  build_and_test_linux:
+    name: Build and Test (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: taiki-e/install-action@nextest
+      - name: 'Build and test'
+        run: cargo nextest run --workspace --all-targets --all-features
+
+  build_and_test_windows:
+    name: Build and Test (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Prepare symlink configuration
+        run: git config --global core.symlinks true
+
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: taiki-e/install-action@nextest
+      - name: 'Build and test'
+        run: cargo nextest run --workspace --all-targets --all-features
+
   github_release:
     name: ${{ matrix.target }}
+    needs:
+      - audit
+      - build_and_test_linux
+      - build_and_test_windows
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:
@@ -86,9 +129,6 @@ jobs:
           command: build
           args: --release --locked --target=${{ matrix.target }} --color=always --verbose
           use-cross: ${{ runner.os == 'Linux' }}
-
-      - name: Run tests
-        run: cargo test --locked --target=${{ matrix.target }} --release --verbose
 
       - name: Install cargo-deb
         if: ${{ matrix.deb == true }}
