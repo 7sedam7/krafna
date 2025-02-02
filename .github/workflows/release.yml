@@ -103,9 +103,9 @@ jobs:
           file: Cargo.toml
           field: package.version
 
-      - name: Set version from tag
-        id: set_version
-        run: VERSION=${{ steps.get_version.outputs.value }}
+      # - name: Set version from tag
+      #   id: set_version
+      #   run: VERSION=${{ steps.get_version.outputs.value }}
         # run: |
         #   VERSION=${GITHUB_REF#refs/tags/}
         #   VERSION=${VERSION//v/}  # This removes the 'v' prefix, if present.
@@ -157,12 +157,12 @@ jobs:
           tar -cv CHANGELOG.md README.md \
             -C target/${{ matrix.target }}/release/ krafna |
             gzip --best > \
-            krafna-${{ env.VERSION }}-${{ matrix.target }}.tar.gz
+            krafna-${{ steps.get_version.outputs.value }}-${{ matrix.target }}.tar.gz
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
         run: |
-          7z a krafna-${{ env.VERSION }}-${{ matrix.target }}.zip `
+          7z a krafna-${{ steps.get_version.outputs.value }}-${{ matrix.target }}.zip `
             CHANGELOG.md README.md `
             ./target/${{ matrix.target }}/release/krafna.exe
 
@@ -183,8 +183,8 @@ jobs:
             *.deb
             *.tar.gz
             *.zip
-          name: Release v${{ env.VERSION }}
-          tag_name: "v${{ env.VERSION }}"
+          name: Release v${{ steps.get_version.outputs.value }}
+          tag_name: "v${{ steps.get_version.outputs.value }}"
 
   crates_io_publish:
     name: Publish (crates.io)
