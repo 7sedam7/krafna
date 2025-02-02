@@ -1,97 +1,121 @@
-name: Release
-
+name: release
 on:
   push:
     branches: [main]
-    tags:
-      - 'v*'
-
+  pull_request:
+  workflow_dispatch:
+env:
+  CARGO_INCREMENTAL: 0
+permissions:
+  contents: write
 jobs:
   release:
-    name: Create Release
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
-    steps:
-      - name: Checkout
-      - uses: actions/checkout@v4
-
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref_name }}
-          draft: false
-        run: |
-          gh release create ${{ github.ref_name }} \
-            --title "Release ${{ github.ref_name }}" \
-            --draft=false
-
-  build:
-    name: Build ${{ matrix.target }}
-    needs: release
+    name: ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
-    permissions:
-      contents: write
     strategy:
+      fail-fast: false
       matrix:
         include:
-          # Linux
           - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            asset_name: krafna-x86_64-linux.tar.gz
+            target: x86_64-unknown-linux-musl
+            deb: true
           - os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
-            asset_name: krafna-aarch64-linux.tar.gz
-          # macOS
+            target: arm-unknown-linux-musleabihf
+          - os: ubuntu-latest
+            target: armv7-unknown-linux-musleabihf
+            deb: true
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            deb: true
+          - os: ubuntu-latest
+            target: i686-unknown-linux-musl
+            deb: true
+          - os: ubuntu-latest
+            target: aarch64-linux-android
           - os: macos-latest
             target: x86_64-apple-darwin
-            asset_name: krafna-x86_64-macos.tar.gz
           - os: macos-latest
             target: aarch64-apple-darwin
-            asset_name: krafna-aarch64-macos.tar.gz
-          # Windows
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            asset_name: krafna-x86_64-windows.zip
-
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Rust
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Get version
+        id: get_version
+        uses: SebRollen/toml-action@v1.2.0
+        with:
+          file: Cargo.toml
+          field: package.version
+      - name: Install Rust
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-          target: ${{ matrix.target }}
+          profile: minimal
           override: true
-
-      - name: Build
+          target: ${{ matrix.target }}
+      - name: Setup cache
+        uses: Swatinem/rust-cache@v2.7.7
+        with:
+          key: ${{ matrix.target }}
+      - name: Install cross
+        if: ${{ runner.os == 'Linux' }}
+        uses: actions-rs/cargo@v1
+        with:
+          command: install
+          args: --color=always --git=https://github.com/cross-rs/cross.git --locked --rev=02bf930e0cb0c6f1beffece0788f3932ecb2c7eb --verbose cross
+      - name: Build binary
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --release --target ${{ matrix.target }}
-
-      - name: Package (Unix)
-        if: matrix.os != 'windows-latest'
+          args: --release --locked --target=${{ matrix.target }} --color=always --verbose
+          use-cross: ${{ runner.os == 'Linux' }}
+      - name: Install cargo-deb
+        if: ${{ matrix.deb == true }}
+        uses: actions-rs/install@v0.1
+        with:
+          crate: cargo-deb
+      - name: Build deb
+        if: ${{ matrix.deb == true }}
+        uses: actions-rs/cargo@v1
+        with:
+          command: deb
+          args: --no-build --no-strip --output=. --target=${{ matrix.target }}
+      - name: Package (*nix)
+        if: runner.os != 'Windows'
         run: |
-          cd target/${{ matrix.target }}/release
-          tar czf ../../../${{ matrix.asset_name }} krafna
-          cd ../../..
-
+          tar -cv CHANGELOG.md README.md man/ \
+            -C contrib/ completions/ -C ../ \
+            -C target/${{ matrix.target }}/release/ krafna |
+            gzip --best > \
+            krafna-${{ steps.get_version.outputs.value }}-${{ matrix.target }}.tar.gz
       - name: Package (Windows)
-        if: matrix.os == 'windows-latest'
+        if: runner.os == 'Windows'
         run: |
-          cd target/${{ matrix.target }}/release
-          7z a ../../../${{ matrix.asset_name }} krafna.exe
-          cd ../../..
-
-      - name: Upload Release Asset
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release upload ${{ github.ref_name }} ${{ matrix.asset_name }}
+          7z a krafna-${{ steps.get_version.outputs.value }}-${{ matrix.target }}.zip `
+            CHANGELOG.md README.md ./man/ ./contrib/completions/ `
+            ./target/${{ matrix.target }}/release/krafna.exe
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: |
+            *.deb
+            *.tar.gz
+            *.zip
+      - name: Create release
+        if: |
+          github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'chore(release)')
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: |
+            *.deb
+            *.tar.gz
+            *.zip
+          name: ${{ steps.get_version.outputs.value }}
+          tag_name: ""
