@@ -218,3 +218,43 @@ jobs:
             --allow-branch HEAD \
             --no-confirm \
             --execute
+  brew_formula_update:
+    name: Homebrew tap formula update
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout formula repo
+        uses: actions/checkout@v4
+        with:
+          repository: 7sedam7/homebrew-kifla
+          ssh-key: ${{ secrets.FORMULA_DEPLOY_KEY }}
+          # token: ${{ secrets.HOMEBERW_TAP_PAT_TOKEN }}
+          path: formula-repo
+
+      - name: Calculate new SHA
+        id: sha
+        run: |
+          URL="https://github.com/7sedam7/krafna/archive/refs/tags/v${VERSION}.tar.gz"
+          SHA=$(curl -sL $URL | shasum -a 256 | cut -d ' ' -f 1)
+          echo "sha=$SHA" >> $GITHUB_OUTPUT
+
+      - name: Get version
+        id: get_version
+        uses: SebRollen/toml-action@v1.2.0
+        with:
+          file: Cargo.toml
+          field: package.version
+
+      - name: Update formula
+        run: |
+          cd formula-repo
+          sed -i -E "s|(url \"https://github.com/7sedam7/krafna/archive/refs/tags/v).+(.tar.gz\")|\1${ steps.get_version.outputs.value }\2|" Formula/krafna.rb
+          sed -i "s/sha256 \"[a-f0-9]\{64\}\"/sha256 \"${{ steps.sha.outputs.sha }}\"/" Formula/krafna.rb
+
+      - name: Commit and push
+        run: |
+          cd formula-repo
+          git config user.name "GitHub Action"
+          git config user.email "action@github.com"
+          git add Formula/krafna.rb
+          git commit -m "Update krafna to v${ steps.get_version.outputs.value }"
+          git push
