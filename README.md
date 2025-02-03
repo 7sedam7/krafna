@@ -2,7 +2,7 @@
 
 [![Release and Publish](https://github.com/7sedam7/krafna/actions/workflows/release.yml/badge.svg)](https://github.com/7sedam7/krafna/actions/workflows/release.yml)
 
-Krafna is a terminal-based alternative to Obsidian's Dataview plugin, allowing you to query your Markdown files using standard SQL syntax.
+![Krafna is a terminal-based alternative to Obsidian's Dataview plugin, allowing you to query your Markdown files using standard SQL syntax.](demo.gif)
 
 ## Features
 
