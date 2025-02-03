@@ -62,6 +62,18 @@ krafna "SELECT * FROM FRONTMATTER_DATA('~/.notes')" --include-fields title,tags
 
 Use with the [Perec](https://github.com/7sedam7/perec) Neovim plugin for seamless integration.
 
+## Roadmap
+(not in priority order)
+[ ] TODOs
+[ ] add group by
+[ ] add . support for accesing sub-fields (file.name)
+[ ]  * migrate file_name, etc under file (name, path, created, accessed, modified)
+[ ] add default variables (today)
+[ ] add functions
+[ ]  * DATE("some-date") -> new type date
+[ ] implement val -> val operators
+[ ] add querying of TODOs
+[ ] add querying of links between notes
 
 ## Author
 
