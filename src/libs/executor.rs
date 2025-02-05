@@ -64,10 +64,19 @@ fn execute_select(fields: &Vec<String>, data: &mut Vec<Pod>) {
     // TODO: implement * to select all values
     // TODO: implement function calls in select
     // TODO: implement AS in select
+    let check_fields: Vec<String> = fields
+        .iter()
+        .map(|s| {
+            s.split_once('.')
+                .map(|(before, _)| before)
+                .unwrap_or(s)
+                .to_string()
+        })
+        .collect();
 
     for pod in data {
         if let Pod::Hash(ref mut hashmap) = *pod {
-            hashmap.retain(|k, _| k == "file_name" || fields.contains(k));
+            hashmap.retain(|k, _| check_fields.contains(k));
         }
     }
 }
@@ -345,7 +354,7 @@ fn get_queue_element_value(
     data: &Pod,
 ) -> Result<Option<FieldValue>, String> {
     match operand {
-        ExpressionElement::FieldName(field_name) => Ok(get_field_value(field_name, data)),
+        ExpressionElement::FieldName(field_name) => Ok(get_field_value(&field_name, data)),
         ExpressionElement::FieldValue(field_value) => Ok(Some(field_value.clone())),
         ExpressionElement::Function(_func) => {
             Err("TODO: Implement function execution!".to_string())
@@ -354,21 +363,36 @@ fn get_queue_element_value(
     }
 }
 
+pub fn get_nested_pod(field_name: &String, data: &Pod) -> Option<Pod> {
+    // TODO: think about field case insensitive comparisson (could convert to_lower when parsing
+    // the data)
+    let mut current = data.clone();
+    for key in field_name.split('.') {
+        match current.as_hashmap() {
+            Ok(hash) => match hash.get(key) {
+                Some(pod) => current = pod.clone(),
+                None => return None,
+            },
+            Err(_) => return None,
+        }
+    }
+    Some(current)
+}
+
 pub fn get_field_value(field_name: &String, data: &Pod) -> Option<FieldValue> {
-    // TODO: add nested access with . (test.kifla.smurph)
-    // TODO: think about field case insensitive comparisson
-    data.as_hashmap()
-        .ok()
-        .and_then(|map| map.get(field_name).cloned())
-        .and_then(|val| match val {
-            Pod::Null => None,
-            Pod::String(str) => Some(FieldValue::String(str.clone())),
-            Pod::Float(num) => Some(FieldValue::Number(num)),
-            Pod::Integer(num) => Some(FieldValue::Number(num as f64)),
-            Pod::Boolean(bool) => Some(FieldValue::Bool(bool)),
-            Pod::Array(list) => Some(pod_array_to_field_value(&list)),
-            _ => None,
-        })
+    match get_nested_pod(field_name, data) {
+        Some(Pod::Null) => None,
+        Some(Pod::String(str)) => Some(FieldValue::String(str.clone())),
+        Some(Pod::Float(num)) => Some(FieldValue::Number(num)),
+        Some(Pod::Integer(num)) => Some(FieldValue::Number(num as f64)),
+        Some(Pod::Boolean(bool)) => Some(FieldValue::Bool(bool)),
+        Some(Pod::Array(list)) => Some(pod_array_to_field_value(&list)),
+        Some(Pod::Hash(hash)) => match Pod::Hash(hash).deserialize::<serde_json::Value>() {
+            Ok(val) => Some(FieldValue::String(val.to_string())),
+            Err(_) => None,
+        },
+        None => None,
+    }
 }
 
 fn pod_array_to_field_value(list: &Vec<Pod>) -> FieldValue {

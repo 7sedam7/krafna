@@ -58,7 +58,7 @@ fn do_query(
     match execute_query(query, select_fields, from) {
         Ok((fields, res)) => {
             if to_json {
-                let json = pods_to_json(res);
+                let json = pods_to_json(fields, res);
                 println!("{}", json);
             } else {
                 let tsv = pods_to_tsv(fields, res);

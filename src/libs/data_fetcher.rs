@@ -111,32 +111,33 @@ fn read_code_snippet(files: Vec<PathBuf>, lang: &String) -> Result<Vec<String>, 
 
 fn add_file_info(path: &PathBuf, data: &mut Pod) {
     // NOTE: potential colision with file defined values
-    let _ = data.insert(
-        "file_name".to_string(),
+    let mut hash = Pod::new_hash();
+
+    let _ = hash.insert(
+        "name".to_string(),
         Pod::String(path.file_name().unwrap().to_string_lossy().into_owned()),
     );
-    let _ = data.insert(
-        "file_path".to_string(),
-        Pod::String(path.display().to_string()),
-    );
+    let _ = hash.insert("path".to_string(), Pod::String(path.display().to_string()));
     if let Ok(metadata) = fs::metadata(path) {
         if let Ok(created_time) = metadata.created() {
-            let _ = data.insert(
+            let _ = hash.insert(
                 "created".to_string(),
                 Pod::String(DateTime::<Utc>::from(created_time).to_rfc3339()),
             );
         }
         if let Ok(modified_time) = metadata.modified() {
-            let _ = data.insert(
+            let _ = hash.insert(
                 "modified".to_string(),
                 Pod::String(DateTime::<Utc>::from(modified_time).to_rfc3339()),
             );
         }
         if let Ok(accessed_time) = metadata.accessed() {
-            let _ = data.insert(
+            let _ = hash.insert(
                 "accessed".to_string(),
                 Pod::String(DateTime::<Utc>::from(accessed_time).to_rfc3339()),
             );
         }
     }
+
+    let _ = data.insert("file".to_string(), hash);
 }
