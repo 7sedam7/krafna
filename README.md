@@ -66,9 +66,9 @@ Use with the [Perec](https://github.com/7sedam7/perec) Neovim plugin for seamles
 (not in priority order)
 [ ] TODOs
 [ ] add group by
-[ ] add . support for accesing sub-fields (file.name)
-[ ]  * migrate file_name, etc under file (name, path, created, accessed, modified)
-[ ] add default variables (today)
+[x] add . support for accesing sub-fields (file.name)
+[x]  * migrate file_name, etc under file (name, path, created, accessed, modified)
+[x] add default variables (today, now)
 [ ] add functions
 [ ]  * DATE("some-date") -> new type date
 [ ] implement val -> val operators
