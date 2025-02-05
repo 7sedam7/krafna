@@ -2,7 +2,7 @@ use std::error::Error;
 use std::fs;
 use std::path::PathBuf;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local, Utc};
 use gray_matter::engine::YAML;
 use gray_matter::{Matter, Pod};
 use rayon::prelude::*;
@@ -13,9 +13,26 @@ use super::{FieldValue, FunctionArg};
 use crate::libs::parser::Function;
 
 pub fn fetch_data(from_function: &Function) -> Result<Vec<Pod>, Box<dyn Error>> {
-    match from_function.name.to_uppercase().as_str() {
+    let mut data = match from_function.name.to_uppercase().as_str() {
         "FRONTMATTER_DATA" => fetch_frontmatter_data(&from_function.args),
         _ => Err(format!("Unknown function: {}", from_function.name).into()),
+    }?;
+
+    add_default_values(&mut data);
+
+    Ok(data)
+}
+
+fn add_default_values(data: &mut Vec<Pod>) {
+    for pod in data {
+        let _ = pod.insert(
+            "today".to_string(),
+            Pod::String(Local::now().format("%Y-%m-%d").to_string()),
+        );
+        let _ = pod.insert(
+            "now".to_string(),
+            Pod::String(Local::now().format("%Y-%m-%d %H:%M:%S").to_string()),
+        );
     }
 }
 
