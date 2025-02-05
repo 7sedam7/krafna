@@ -30,13 +30,23 @@ struct Args {
     /// OVERRIDES SELECT fields with "field1,field2"
     #[arg(long, value_delimiter = ',')]
     select_fields: Option<Vec<String>>,
+
+    /// include SELECT fields with "field1,field2"
+    #[arg(long, value_delimiter = ',')]
+    include_fields: Vec<String>,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
 
     match args.query {
-        Some(query) => do_query(&query, args.select_fields, args.from, args.json),
+        Some(query) => do_query(
+            &query,
+            args.select_fields,
+            args.include_fields,
+            args.from,
+            args.json,
+        ),
         None => {
             if let Some(find) = args.find {
                 find_files(&find, args.json);
@@ -52,10 +62,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 fn do_query(
     query: &String,
     select_fields: Option<Vec<String>>,
+    include_fields: Vec<String>,
     from: Option<String>,
     to_json: bool,
 ) {
-    match execute_query(query, select_fields, from) {
+    match execute_query(query, select_fields, include_fields, from) {
         Ok((fields, res)) => {
             if to_json {
                 let json = pods_to_json(fields, res);

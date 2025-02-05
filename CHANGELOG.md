@@ -6,7 +6,7 @@
 - Added default values (today, now)
 
 ### Changed
-- include-fields --> select-fields (as override of select)
+- added select-fields (as override of select)
 
 ### Fixed
 - No known bugs atm

@@ -14,6 +14,7 @@ use super::parser::OrderByFieldOption;
 pub fn execute_query(
     query: &String,
     select_fields: Option<Vec<String>>,
+    include_fields: Vec<String>,
     from_query: Option<String>,
 ) -> Result<(Vec<String>, Vec<Pod>), Box<dyn Error>> {
     let mut query = match query.parse::<Query>() {
@@ -24,6 +25,7 @@ pub fn execute_query(
     if let Some(select_fields) = select_fields {
         query.select_fields = select_fields;
     }
+    query.select_fields.splice(0..0, include_fields);
 
     if from_query.is_some() {
         let mut peekable_from_query: PeekableDeque<char> =
