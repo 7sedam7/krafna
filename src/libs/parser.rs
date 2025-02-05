@@ -66,7 +66,6 @@ impl FromStr for Operator {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        //Option<Self> {
         match Self::OPERATOR_MAP.get(s.to_uppercase().as_str()).cloned() {
             Some(op) => Ok(op),
             None => Err(format!("Unknown operator: {}", s)),
@@ -723,17 +722,28 @@ impl Query {
                 return Err(format!("Field name expected. They must start with letter, underscore or a minus, found: {}", peeked_char));
             }
             field_name.push(peeked_char);
-            peekable_query.next();
         } else {
             return Err("Field name expected. nothing found".to_string());
         }
 
+        let mut last_char = *peekable_query.peek().unwrap();
+        peekable_query.next();
+
         while let Some(&peeked_char) = peekable_query.peek() {
-            if !peeked_char.is_alphanumeric() && peeked_char != '_' && peeked_char != '-' {
+            if !peeked_char.is_alphanumeric()
+                && peeked_char != '_'
+                && peeked_char != '-'
+                && peeked_char != '.'
+            {
                 break;
             }
             field_name.push(peeked_char);
+            last_char = peeked_char;
             peekable_query.next();
+        }
+
+        if last_char == '.' {
+            return Err("Field can't end with '.'!".to_string());
         }
 
         Ok(field_name)
@@ -1737,6 +1747,94 @@ mod tests {
     /////////////////////////////////////
     // PARSE FIELD NAME
     /////////////////////////////////////
+    #[test]
+    fn test_parse_field_name_ends_with_dot() -> Result<(), String> {
+        let field_name = "test.".to_string();
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(field_name.chars());
+
+        if Query::parse_field_name(&mut peekable_query).is_ok() {
+            return Err("It should fail since field name can't end with a dot!".to_string());
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_field_name_contains_dot() -> Result<(), String> {
+        let field_name = "te.st".to_string();
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(field_name.chars());
+
+        match Query::parse_field_name(&mut peekable_query) {
+            Ok(parsed_field_name) => assert_eq!(field_name, parsed_field_name),
+            Err(error) => return Err(error),
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_field_name_contains_minus() -> Result<(), String> {
+        let field_name = "te-st".to_string();
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(field_name.chars());
+
+        match Query::parse_field_name(&mut peekable_query) {
+            Ok(parsed_field_name) => assert_eq!(field_name, parsed_field_name),
+            Err(error) => return Err(error),
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_field_name_start_with_dot() -> Result<(), String> {
+        let field_name = ".test".to_string();
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(field_name.chars());
+
+        if Query::parse_field_name(&mut peekable_query).is_ok() {
+            return Err("It should fail since field name can't start with a dot!".to_string());
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_field_name_start_with_minus() -> Result<(), String> {
+        let field_name = "-test".to_string();
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(field_name.chars());
+
+        if Query::parse_field_name(&mut peekable_query).is_ok() {
+            return Err("It should fail since field name can't start with a minus!".to_string());
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_field_name_start_with_underscore() -> Result<(), String> {
+        let field_name = "_test".to_string();
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(field_name.chars());
+
+        match Query::parse_field_name(&mut peekable_query) {
+            Ok(parsed_field_name) => assert_eq!(field_name, parsed_field_name),
+            Err(error) => return Err(error),
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_field_name_basic() -> Result<(), String> {
+        let field_name = "test".to_string();
+        let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(field_name.chars());
+
+        match Query::parse_field_name(&mut peekable_query) {
+            Ok(parsed_field_name) => assert_eq!(field_name, parsed_field_name),
+            Err(error) => return Err(error),
+        }
+
+        Ok(())
+    }
+
     #[test]
     fn test_parse_field_name_first_char_num() -> Result<(), String> {
         let field_name = "5test".to_string();
