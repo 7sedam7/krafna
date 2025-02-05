@@ -220,12 +220,14 @@ jobs:
             --execute
   brew_formula_update:
     name: Homebrew tap formula update
+    needs: github_release
+
     runs-on: ubuntu-latest
     steps:
       - name: Checkout formula repo
         uses: actions/checkout@v4
         with:
-          repository: 7sedam7/homebrew-kifla
+          repository: 7sedam7/homebrew-krafna
           ssh-key: ${{ secrets.FORMULA_DEPLOY_KEY }}
           # token: ${{ secrets.HOMEBERW_TAP_PAT_TOKEN }}
           path: formula-repo
