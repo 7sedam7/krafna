@@ -2,11 +2,11 @@
 
 ## [0.1.1] - 2025-02-01
 ### Added
-- Query parsing
-- Query execution
+- Accessing nested fields with '.' in field names
+- Added default values (today, now)
 
 ### Changed
-- Nothing, bumping the version to trigger gh actions, doing initial setup
+- include-fields --> select-fields (as override of select)
 
 ### Fixed
 - No known bugs atm
