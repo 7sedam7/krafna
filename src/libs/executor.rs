@@ -13,13 +13,17 @@ use super::parser::OrderByFieldOption;
 
 pub fn execute_query(
     query: &String,
-    include_fields: Vec<String>,
+    select_fields: Option<Vec<String>>,
     from_query: Option<String>,
 ) -> Result<(Vec<String>, Vec<Pod>), Box<dyn Error>> {
     let mut query = match query.parse::<Query>() {
         Ok(q) => q,
         Err(error) => return Err(error.into()),
     };
+
+    if let Some(select_fields) = select_fields {
+        query.select_fields = select_fields;
+    }
 
     if from_query.is_some() {
         let mut peekable_from_query: PeekableDeque<char> =
@@ -45,16 +49,9 @@ pub fn execute_query(
     // ORDER BY
     execute_order_by(&query.order_by_fields, &mut result)?;
     // SELECT
-    let mut select_fields = include_fields.clone();
-    select_fields.extend(
-        query
-            .select_fields
-            .into_iter()
-            .filter(|sf| !include_fields.contains(sf)),
-    );
-    execute_select(&select_fields, &mut result);
+    execute_select(&query.select_fields, &mut result);
 
-    Ok((select_fields, result))
+    Ok((query.select_fields, result))
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -66,6 +63,7 @@ enum Operand {
 fn execute_select(fields: &Vec<String>, data: &mut Vec<Pod>) {
     // TODO: implement * to select all values
     // TODO: implement function calls in select
+    // TODO: implement AS in select
 
     for pod in data {
         if let Pod::Hash(ref mut hashmap) = *pod {

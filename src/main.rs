@@ -15,7 +15,7 @@ struct Args {
     query: Option<String>,
 
     /// From option in case you are implementing querying for specific FROM that you don't want to
-    /// specify every time
+    /// specify every time. This OVERRIDES the FROM part of the query!
     #[arg(long, value_hint = ValueHint::Other)]
     from: Option<String>,
 
@@ -27,16 +27,16 @@ struct Args {
     #[arg(long)]
     json: bool,
 
-    /// include SELECT fields "field1,field2"
+    /// OVERRIDES SELECT fields with "field1,field2"
     #[arg(long, value_delimiter = ',')]
-    include_fields: Vec<String>,
+    select_fields: Option<Vec<String>>,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
 
     match args.query {
-        Some(query) => do_query(&query, args.include_fields, args.from, args.json),
+        Some(query) => do_query(&query, args.select_fields, args.from, args.json),
         None => {
             if let Some(find) = args.find {
                 find_files(&find, args.json);
@@ -49,8 +49,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn do_query(query: &String, include_fields: Vec<String>, from: Option<String>, to_json: bool) {
-    match execute_query(query, include_fields, from) {
+fn do_query(
+    query: &String,
+    select_fields: Option<Vec<String>>,
+    from: Option<String>,
+    to_json: bool,
+) {
+    match execute_query(query, select_fields, from) {
         Ok((fields, res)) => {
             if to_json {
                 let json = pods_to_json(res);
