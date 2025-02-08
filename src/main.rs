@@ -14,10 +14,18 @@ struct Args {
     #[arg(value_hint = ValueHint::Other)]
     query: Option<String>,
 
+    /// OVERRIDES SELECT fields with "field1,field2"
+    #[arg(long)]
+    select: Option<String>,
+
     /// From option in case you are implementing querying for specific FROM that you don't want to
     /// specify every time. This OVERRIDES the FROM part of the query!
     #[arg(long, value_hint = ValueHint::Other)]
     from: Option<String>,
+
+    /// include SELECT fields with "field1,field2"
+    #[arg(long)]
+    include_fields: Option<String>,
 
     /// Find option to find all krafna snippets within a dir
     #[arg(long, value_hint = ValueHint::DirPath)]
@@ -26,14 +34,6 @@ struct Args {
     /// Output results in JSON format
     #[arg(long)]
     json: bool,
-
-    /// OVERRIDES SELECT fields with "field1,field2"
-    #[arg(long, value_delimiter = ',')]
-    select_fields: Option<Vec<String>>,
-
-    /// include SELECT fields with "field1,field2"
-    #[arg(long, value_delimiter = ',')]
-    include_fields: Vec<String>,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -42,9 +42,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     match args.query {
         Some(query) => do_query(
             &query,
-            args.select_fields,
-            args.include_fields,
+            args.select,
             args.from,
+            args.include_fields,
             args.json,
         ),
         None => {
@@ -61,12 +61,12 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 fn do_query(
     query: &String,
-    select_fields: Option<Vec<String>>,
-    include_fields: Vec<String>,
+    select_fields: Option<String>,
     from: Option<String>,
+    include_fields: Option<String>,
     to_json: bool,
 ) {
-    match execute_query(query, select_fields, include_fields, from) {
+    match execute_query(query, select_fields, from, include_fields) {
         Ok((fields, res)) => {
             if to_json {
                 let json = pods_to_json(fields, res);

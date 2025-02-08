@@ -291,7 +291,7 @@ impl Query {
         }
     }
 
-    fn parse_select(peekable_query: &mut PeekableDeque<char>) -> Result<Vec<String>, String> {
+    pub fn parse_select(peekable_query: &mut PeekableDeque<char>) -> Result<Vec<String>, String> {
         match Query::parse_keyword(peekable_query, "SELECT", false) {
             Ok(()) => {}
             Err(error) => return Err(error),

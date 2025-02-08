@@ -13,23 +13,56 @@ use super::parser::OrderByFieldOption;
 
 pub fn execute_query(
     query: &String,
-    select_fields: Option<Vec<String>>,
-    include_fields: Vec<String>,
-    from_query: Option<String>,
+    select: Option<String>,
+    from: Option<String>,
+    include_fields: Option<String>,
 ) -> Result<(Vec<String>, Vec<Pod>), Box<dyn Error>> {
     let mut query = match query.parse::<Query>() {
         Ok(q) => q,
         Err(error) => return Err(error.into()),
     };
 
-    if let Some(select_fields) = select_fields {
-        query.select_fields = select_fields;
+    // SELECT override if present
+    if let Some(select_query) = select {
+        let mut peekable_select_query: PeekableDeque<char> =
+            PeekableDeque::from_iter(format!("SELECT {}", select_query).chars());
+        match Query::parse_select(&mut peekable_select_query) {
+            Ok(select_fields) => query.select_fields = select_fields,
+            Err(error) => {
+                return Err(format!(
+                    "Error parsing SELECT: {}, Query: \"{}\"",
+                    error,
+                    peekable_select_query.display_state()
+                )
+                .into())
+            }
+        }
     }
-    query.select_fields.splice(0..0, include_fields);
+    // SELECT include/add fields to query SELECT fields
+    if let Some(include_select_query) = include_fields {
+        let mut peekable_select_query: PeekableDeque<char> =
+            PeekableDeque::from_iter(format!("SELECT {}", include_select_query).chars());
+        match Query::parse_select(&mut peekable_select_query) {
+            Ok(select_fields) => {
+                // TODO: Should not filter duplicates, but only append "include_fields" that are not
+                // already in "select_fields"
+                query.select_fields.retain(|s| !select_fields.contains(s));
+                query.select_fields.splice(0..0, select_fields);
+            }
+            Err(error) => {
+                return Err(format!(
+                    "Error parsing SELECT: {}, Query: \"{}\"",
+                    error,
+                    peekable_select_query.display_state()
+                )
+                .into())
+            }
+        }
+    }
 
-    if from_query.is_some() {
+    if let Some(from_query) = from {
         let mut peekable_from_query: PeekableDeque<char> =
-            PeekableDeque::from_iter(format!("FROM {}", from_query.unwrap()).chars());
+            PeekableDeque::from_iter(format!("FROM {}", from_query).chars());
         match Query::parse_from(&mut peekable_from_query) {
             Ok(from_function) => query.from_function = Some(from_function),
             Err(error) => {
