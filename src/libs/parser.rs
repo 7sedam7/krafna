@@ -165,7 +165,7 @@ pub enum OrderDirection {
 
 #[derive(Debug)]
 pub struct Query {
-    pub select_fields: Vec<String>,
+    pub select_fields: Vec<String>, // TODO: add suport for functions and AS
     pub from_function: Option<Function>,
     pub where_expression: Vec<ExpressionElement>,
     pub order_by_fields: Vec<OrderByFieldOption>,

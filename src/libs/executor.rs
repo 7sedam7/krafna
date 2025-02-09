@@ -1,15 +1,17 @@
 use std::error::Error;
 use std::usize;
 
+use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, Utc};
 use gray_matter::Pod;
 use hashbrown::HashSet;
 use regex::Regex;
 
 use crate::libs::data_fetcher::fetch_data;
-use crate::libs::parser::{ExpressionElement, FieldValue, Operator, OrderDirection, Query};
+use crate::libs::parser::{
+    ExpressionElement, FieldValue, Function, FunctionArg, Operator, OrderByFieldOption,
+    OrderDirection, Query,
+};
 use crate::libs::PeekableDeque;
-
-use super::parser::OrderByFieldOption;
 
 pub fn execute_query(
     query: &String,
@@ -384,6 +386,9 @@ fn execute_val_comparison_operator(
     Ok(Operand::BoolElement(indexes))
 }
 
+/***************************************************************************************************
+*************************************** VALUE getters **********************************************
+***************************************************************************************************/
 fn get_queue_element_value(
     operand: &ExpressionElement,
     data: &Pod,
@@ -391,9 +396,10 @@ fn get_queue_element_value(
     match operand {
         ExpressionElement::FieldName(field_name) => Ok(get_field_value(&field_name, data)),
         ExpressionElement::FieldValue(field_value) => Ok(Some(field_value.clone())),
-        ExpressionElement::Function(_func) => {
-            Err("TODO: Implement function execution!".to_string())
-        }
+        ExpressionElement::Function(func) => match func.name.to_uppercase().as_str() {
+            "DATEADD" => Ok(Some(execute_function_date_add(func, data)?)),
+            _ => Err(format!("TODO: Implement function execution: {:?}!", func)),
+        },
         _ => Err(format!("Unsupported element: {:?}!", operand)),
     }
 }
@@ -446,11 +452,144 @@ fn pod_array_to_field_value(list: &Vec<Pod>) -> FieldValue {
     FieldValue::List(fv_list)
 }
 
+/***************************************************************************************************
+*************************************** EXECUTE functions ******************************************
+***************************************************************************************************/
 fn execute_operation_like(a: FieldValue, b: FieldValue) -> bool {
     match (a, b) {
         (FieldValue::String(a_str), FieldValue::String(b_str)) => {
             Regex::new(&b_str).map_or(false, |re| re.is_match(&a_str))
         }
         _ => false,
+    }
+}
+
+fn execute_function_date_add(func: &Function, data: &Pod) -> Result<FieldValue, String> {
+    if func.args.len() != 3 {
+        return Err(format!(
+            "Function DATEADD expects 3 arguments, but found {}!",
+            func.args.len()
+        ));
+    }
+
+    // FIRST ARGUMENT
+    let interval = match &func.args[0] {
+        FunctionArg::FieldName(interval) => interval,
+        _ => {
+            return Err(format!(
+                "Function DATEADD expects first argument to be a interval, but found: {:?}",
+                func.args[0]
+            ))
+        }
+    };
+
+    // SECOND ARGUMENT
+    let number = match &func.args[1] {
+        FunctionArg::FieldName(field_name) => match get_field_value(field_name, data) {
+            Some(FieldValue::Number(number)) => number,
+            _ => {
+                return Err(format!(
+                    "Function DATEADD expects second argument to be a number, but found: {:?}",
+                    func.args[1]
+                ))
+            }
+        },
+        FunctionArg::FieldValue(FieldValue::Number(number)) => *number,
+        _ => {
+            return Err(format!(
+                "Function DATEADD expects second argument to be a number, but found: {:?}",
+                func.args[1]
+            ))
+        }
+    };
+
+    // THIRD ARGUMENT
+    let date_str = match &func.args[2] {
+        FunctionArg::FieldName(field_name) => match get_field_value(field_name, data) {
+            Some(FieldValue::String(date_str)) => date_str,
+            _ => {
+                return Err(format!(
+                    "Function DATEADD expects third argument to be a date, but found: {:?}",
+                    func.args[2]
+                ))
+            }
+        },
+        FunctionArg::FieldValue(FieldValue::String(date_str)) => date_str.clone(),
+        _ => {
+            return Err(format!(
+                "Function DATEADD expects third argument to be a date, but found: {:?}",
+                func.args[2]
+            ))
+        }
+    };
+    let naive_datetime = match parse_naive_datetime(&date_str) {
+        Ok(date) => date,
+        Err(_) => {
+            return Err(format!(
+                "Function DATEADD expects third argument to be a date, but found: {:?}",
+                func.args[2]
+            ))
+        }
+    };
+
+    let result_date = match match interval.to_uppercase().as_str() {
+        "YEAR" => naive_datetime.with_year(naive_datetime.year() + number as i32),
+        "MONTH" => {
+            let months_to_add = naive_datetime.month() as i32 + number as i32;
+            let years_to_add = (months_to_add - 1) / 12;
+            let new_month = ((months_to_add - 1) % 12) + 1;
+            naive_datetime
+                .with_year(naive_datetime.year() + years_to_add)
+                .and_then(|d| d.with_month(new_month as u32))
+        },
+        "WEEK" => naive_datetime.checked_add_signed(chrono::Duration::weeks(number as i64)),
+        "DAY" => naive_datetime.checked_add_signed(chrono::Duration::days(number as i64)),
+        "HOUR" => naive_datetime.checked_add_signed(chrono::Duration::hours(number as i64)),
+        "MINUTE" => naive_datetime.checked_add_signed(chrono::Duration::minutes(number as i64)),
+        "SECOND" => naive_datetime.checked_add_signed(chrono::Duration::seconds(number as i64)),
+        "MILISECOND" => naive_datetime.checked_add_signed(chrono::Duration::milliseconds(number as i64)),
+        "MICROSECOND" => naive_datetime.checked_add_signed(chrono::Duration::microseconds(number as i64)),
+        "NANOSECOND" => naive_datetime.checked_add_signed(chrono::Duration::nanoseconds(number as i64)),
+        _ => {
+            return Err(format!(
+                "Function DATEADD expects first argument to be a valid interval, but found: {:?}",
+                interval
+            ))
+        }
+    } {
+        Some(result_date) => result_date,
+        None => {
+            return Err(format!(
+                "Function DATEADD expects second argument to be a number within `interval` range, but found: {} for interval: {}",
+                number,
+                interval
+            ))
+        }
+    };
+
+    Ok(FieldValue::String(
+        result_date.format("%Y-%m-%dT%H:%M:%S").to_string(),
+    ))
+}
+
+// TODO: use for `execute_function_date` that parses a date `DATE(<date>, <optional format>)`
+fn parse_naive_datetime(input: &str) -> Result<NaiveDateTime, String> {
+    // Try to parse as
+    if let Ok(date_time) = input.parse::<DateTime<Utc>>() {
+        return Ok(date_time.naive_utc());
+    }
+    // Try to parse as full date-time first
+    if let Ok(naive_datetime) = NaiveDateTime::parse_from_str(input, "%Y-%m-%dT%H:%M:%S") {
+        Ok(naive_datetime)
+    }
+    // If that fails, try to parse as a date only
+    else if let Ok(naive_date) = NaiveDate::parse_from_str(input, "%Y-%m-%d") {
+        // Add a default time of 00:00:00
+        Ok(naive_date
+            .and_hms_opt(0, 0, 0)
+            .expect("Failed to parse date"))
+    } else {
+        // Return an error if neither format works
+        Err(format!("Invalid input: {}", input).to_string())
     }
 }

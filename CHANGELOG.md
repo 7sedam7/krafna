@@ -4,9 +4,10 @@
 ### Added
 - Accessing nested fields with '.' in field names
 - Added default values (today, now)
+- Implemented DATEADD function
 
 ### Changed
-- added select-fields (as override of select)
+- add select (as override of select)
 
 ### Fixed
 - No known bugs atm

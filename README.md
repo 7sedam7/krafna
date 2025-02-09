@@ -64,16 +64,26 @@ Use with the [Perec](https://github.com/7sedam7/perec) Neovim plugin for seamles
 
 ## Roadmap
 (not in priority order)
-[ ] TODOs
-[ ] add group by
-[x] add . support for accesing sub-fields (file.name)
-[x]  * migrate file_name, etc under file (name, path, created, accessed, modified)
-[x] add default variables (today, now)
-[ ] add functions
-[ ]  * DATE("some-date") -> new type date
-[ ] implement val -> val operators
-[ ] add querying of TODOs
-[ ] add querying of links between notes
+- [x] add . support for accesing sub-fields (file.name)
+- [x]  * migrate file_name, etc under file (name, path, created, accessed, modified)
+- [x] add default variables (today)
+- [ ]  * change it so that it does not need to be on every row (can have a general_values hash that can be passed around, and value getters would first check there and then from the source)
+- [ ] TODOs
+- [ ] Add tests for execution
+- [ ] add suport for functions in SELECT
+- [ ] add functions
+- [ ]  * think about which functions to add
+- [ ]  * DATE("some-date", <format>) -> new type date
+- [x]  * [DATEADD()](https://www.w3schools.com/sql/func_sqlserver_dateadd.asp)
+- [ ] implement val -> val operators
+- [ ] UPDATE
+- [ ] DELETE
+- [ ] add AS to SELECT
+- [ ] add querying of TODOs (think of a format similar to [todoist](https://www.todoist.com/help/articles/use-task-quick-add-in-todoist-va4Lhpzz))
+- [ ]  * maybe abstract to query by regex
+- [ ] add querying of links between notes
+- [ ] think about which other sources would be cool to add
+- [ ] add group by
 
 ## Author
 
