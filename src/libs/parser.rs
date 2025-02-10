@@ -4,7 +4,7 @@
 use core::f64;
 use hashbrown::HashSet;
 use serde::{Deserialize, Serialize};
-use std::str::FromStr;
+use std::{fmt::Display, str::FromStr};
 
 use crate::libs::peekable_deque::PeekableDeque;
 
@@ -128,17 +128,23 @@ impl FieldValue {
             _ => false,
         }
     }
+}
 
-    pub fn to_string(&self) -> String {
-        match self {
-            FieldValue::String(s) => s.clone(),
-            FieldValue::Number(n) => n.to_string(),
-            FieldValue::Bool(b) => b.to_string(),
-            FieldValue::List(list) => {
-                let elements: Vec<String> = list.iter().map(|item| item.to_string()).collect();
-                format!("[{}]", elements.join(", "))
+impl Display for FieldValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                FieldValue::String(s) => s.clone(),
+                FieldValue::Number(n) => n.to_string(),
+                FieldValue::Bool(b) => b.to_string(),
+                FieldValue::List(list) => {
+                    let elements: Vec<String> = list.iter().map(|item| item.to_string()).collect();
+                    format!("[{}]", elements.join(", "))
+                }
             }
-        }
+        )
     }
 }
 
@@ -186,8 +192,7 @@ impl FromStr for Query {
                     Err(error) => {
                         return Err(format!(
                             "Error parsing SELECT: {}, Query: \"{}\"",
-                            error,
-                            peekable_query.display_state()
+                            error, peekable_query
                         ))
                     }
                 };
@@ -204,8 +209,7 @@ impl FromStr for Query {
                     Err(error) => {
                         return Err(format!(
                             "Error parsing FROM: {}, Query: \"{}\"",
-                            error,
-                            peekable_query.display_state()
+                            error, peekable_query
                         ))
                     }
                 };
@@ -214,11 +218,7 @@ impl FromStr for Query {
 
         if !peekable_query.end() && from_function.is_some() {
             if let Err(error) = Query::parse_mandatory_whitespace(&mut peekable_query) {
-                return Err(format!(
-                    "{} Query: \"{}\"",
-                    error,
-                    peekable_query.display_state(),
-                ));
+                return Err(format!("{} Query: \"{}\"", error, peekable_query));
             }
         }
         Query::parse_whitespaces(&mut peekable_query);
@@ -231,8 +231,7 @@ impl FromStr for Query {
                     Err(error) => {
                         return Err(format!(
                             "Error parsing WHERE: {}, Query: \"{}\"",
-                            error,
-                            peekable_query.display_state()
+                            error, peekable_query
                         ));
                     }
                 };
@@ -255,8 +254,7 @@ impl FromStr for Query {
                     Err(error) => {
                         return Err(format!(
                             "Error parsing ORDER BY: {}, Query: \"{}\"",
-                            error,
-                            peekable_query.display_state()
+                            error, peekable_query
                         ));
                     }
                 };
@@ -756,10 +754,7 @@ impl Query {
             Ok(()) => Ok(OrderDirection::ASC),
             Err(_) => match Query::parse_keyword(peekable_query, "DESC", false) {
                 Ok(()) => Ok(OrderDirection::DESC),
-                Err(_) => Err(format!(
-                    "Expected ASC or DESC: {:?}!",
-                    peekable_query.display_state()
-                )),
+                Err(_) => Err(format!("Expected ASC or DESC: {:?}!", peekable_query)),
             },
         }
     }

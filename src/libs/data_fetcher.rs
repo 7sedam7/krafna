@@ -36,7 +36,7 @@ fn add_default_values(data: &mut Vec<Pod>) {
     }
 }
 
-fn fetch_frontmatter_data(args: &Vec<FunctionArg>) -> Result<Vec<Pod>, Box<dyn Error>> {
+fn fetch_frontmatter_data(args: &[FunctionArg]) -> Result<Vec<Pod>, Box<dyn Error>> {
     if args.len() != 1 {
         return Err(format!(
             "Incorret amount of arguments, 1 String expected, but {} arguments found!",

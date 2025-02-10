@@ -1,5 +1,4 @@
 use std::error::Error;
-use std::usize;
 
 use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, Utc};
 use gray_matter::Pod;
@@ -14,7 +13,7 @@ use crate::libs::parser::{
 use crate::libs::PeekableDeque;
 
 pub fn execute_query(
-    query: &String,
+    query: &str,
     select: Option<String>,
     from: Option<String>,
     include_fields: Option<String>,
@@ -33,8 +32,7 @@ pub fn execute_query(
             Err(error) => {
                 return Err(format!(
                     "Error parsing SELECT: {}, Query: \"{}\"",
-                    error,
-                    peekable_select_query.display_state()
+                    error, peekable_select_query
                 )
                 .into())
             }
@@ -54,8 +52,7 @@ pub fn execute_query(
             Err(error) => {
                 return Err(format!(
                     "Error parsing SELECT: {}, Query: \"{}\"",
-                    error,
-                    peekable_select_query.display_state()
+                    error, peekable_select_query
                 )
                 .into())
             }
@@ -70,8 +67,7 @@ pub fn execute_query(
             Err(error) => {
                 return Err(format!(
                     "Error parsing FROM: {}, Query: \"{}\"",
-                    error,
-                    peekable_from_query.display_state()
+                    error, peekable_from_query
                 )
                 .into())
             }
@@ -97,7 +93,7 @@ enum Operand {
     BoolElement(HashSet<usize>),
 }
 
-fn execute_select(fields: &Vec<String>, data: &mut Vec<Pod>) {
+fn execute_select(fields: &[String], data: &mut Vec<Pod>) {
     // TODO: implement * to select all values
     // TODO: implement function calls in select
     // TODO: implement AS in select
@@ -118,7 +114,7 @@ fn execute_select(fields: &Vec<String>, data: &mut Vec<Pod>) {
     }
 }
 
-fn execute_order_by(fields: &Vec<OrderByFieldOption>, data: &mut Vec<Pod>) -> Result<(), String> {
+fn execute_order_by(fields: &Vec<OrderByFieldOption>, data: &mut [Pod]) -> Result<(), String> {
     data.sort_by(|a, b| {
         // do some stuff
         for orderby_field in fields {
@@ -158,9 +154,9 @@ fn execute_order_by(fields: &Vec<OrderByFieldOption>, data: &mut Vec<Pod>) -> Re
     Ok(())
 }
 
-fn execute_where(condition: &Vec<ExpressionElement>, data: &Vec<Pod>) -> Result<Vec<Pod>, String> {
+fn execute_where(condition: &Vec<ExpressionElement>, data: &[Pod]) -> Result<Vec<Pod>, String> {
     if condition.is_empty() {
-        return Ok(data.clone());
+        return Ok(data.to_vec());
     }
 
     let mut stack = Vec::new();
@@ -242,7 +238,7 @@ fn handle_operator_to_queue(
     stack: &mut Vec<ExpressionElement>,
     eval_stack: &mut Vec<ExpressionElement>,
     bool_stack: &mut Vec<HashSet<usize>>,
-    data: &Vec<Pod>,
+    data: &[Pod],
 ) -> Result<(), String> {
     let op;
     let left;
@@ -300,7 +296,7 @@ fn handle_operator_to_queue(
 }
 
 fn execute_operation(
-    data: &Vec<Pod>,
+    data: &[Pod],
     op: &Operator,
     left: &Operand,
     right: &Operand,
@@ -358,7 +354,7 @@ fn execute_bool_comparison_operation(
 }
 
 fn execute_val_comparison_operator(
-    data: &Vec<Pod>,
+    data: &[Pod],
     left: &Operand,
     right: &Operand,
     op: fn(FieldValue, FieldValue) -> bool,
@@ -394,7 +390,7 @@ fn get_queue_element_value(
     data: &Pod,
 ) -> Result<Option<FieldValue>, String> {
     match operand {
-        ExpressionElement::FieldName(field_name) => Ok(get_field_value(&field_name, data)),
+        ExpressionElement::FieldName(field_name) => Ok(get_field_value(field_name, data)),
         ExpressionElement::FieldValue(field_value) => Ok(Some(field_value.clone())),
         ExpressionElement::Function(func) => match func.name.to_uppercase().as_str() {
             "DATEADD" => Ok(Some(execute_function_date_add(func, data)?)),
@@ -404,7 +400,7 @@ fn get_queue_element_value(
     }
 }
 
-pub fn get_nested_pod(field_name: &String, data: &Pod) -> Option<Pod> {
+pub fn get_nested_pod(field_name: &str, data: &Pod) -> Option<Pod> {
     // TODO: think about field case insensitive comparisson (could convert to_lower when parsing
     // the data)
     let mut current = data.clone();
@@ -420,7 +416,7 @@ pub fn get_nested_pod(field_name: &String, data: &Pod) -> Option<Pod> {
     Some(current)
 }
 
-pub fn get_field_value(field_name: &String, data: &Pod) -> Option<FieldValue> {
+pub fn get_field_value(field_name: &str, data: &Pod) -> Option<FieldValue> {
     match get_nested_pod(field_name, data) {
         Some(Pod::Null) => None,
         Some(Pod::String(str)) => Some(FieldValue::String(str.clone())),
