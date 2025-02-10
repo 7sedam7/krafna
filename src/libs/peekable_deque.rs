@@ -23,7 +23,7 @@ impl<T: Display> PeekableDeque<T> {
 
 impl<T: Display> Display for PeekableDeque<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let str: String = self
+        let formatted_str: String = self
             .deque
             .iter()
             .enumerate()
@@ -37,10 +37,10 @@ impl<T: Display> Display for PeekableDeque<T> {
             .collect();
 
         if self.end() {
-            return write!(f, "{}[]", str);
+            return write!(f, "{}[]", formatted_str);
         }
 
-        write!(f, "{}", str)
+        write!(f, "{}", formatted_str)
     }
 }
 
