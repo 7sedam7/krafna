@@ -60,7 +60,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 
 fn do_query(
-    query: &String,
+    query: &str,
     select_fields: Option<String>,
     from: Option<String>,
     include_fields: Option<String>,

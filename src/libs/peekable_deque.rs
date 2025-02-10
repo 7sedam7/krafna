@@ -7,23 +7,6 @@ pub struct PeekableDeque<T> {
 }
 
 impl<T: Display> PeekableDeque<T> {
-    // Constructor to create a new PeekableDeque from an iterator
-    pub fn from_iter<I>(iter: I) -> Self
-    where
-        I: IntoIterator<Item = T>,
-    {
-        PeekableDeque {
-            deque: iter.into_iter().collect(),
-            index: 0,
-        }
-    }
-
-    // Method to get the next item and remove it from the deque
-    pub fn next(&mut self) -> Option<&T> {
-        self.index += 1;
-        self.deque.get(self.index)
-    }
-
     // Method to peek at the next item without removing it
     pub fn peek(&self) -> Option<&T> {
         self.deque.get(self.index)
@@ -36,9 +19,11 @@ impl<T: Display> PeekableDeque<T> {
     pub fn end(&self) -> bool {
         self.index >= self.deque.len()
     }
+}
 
-    pub fn display_state(&self) -> String {
-        let str = self
+impl<T: Display> Display for PeekableDeque<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let str: String = self
             .deque
             .iter()
             .enumerate()
@@ -52,10 +37,28 @@ impl<T: Display> PeekableDeque<T> {
             .collect();
 
         if self.end() {
-            return format!("{}[]", str);
+            return write!(f, "{}[]", str);
         }
 
-        str
+        write!(f, "{}", str)
+    }
+}
+
+impl<T> FromIterator<T> for PeekableDeque<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        PeekableDeque {
+            deque: iter.into_iter().collect(),
+            index: 0,
+        }
+    }
+}
+
+impl<T: Clone> Iterator for PeekableDeque<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<T> {
+        self.index += 1;
+        self.deque.get(self.index).cloned()
     }
 }
 
@@ -116,7 +119,7 @@ mod tests {
         let query = "test".to_string();
         let mut peekable_query = PeekableDeque::from_iter(query.chars());
 
-        assert_eq!('e', *peekable_query.next().unwrap());
+        assert_eq!('e', peekable_query.next().unwrap());
         assert_eq!('e', *peekable_query.peek().unwrap());
     }
 
@@ -133,19 +136,19 @@ mod tests {
     }
 
     #[test]
-    fn test_display_state() {
+    fn test_to_string() {
         let query = "test".to_string();
         let mut peekable_query = PeekableDeque::from_iter(query.chars());
 
-        assert_eq!("[t]est", peekable_query.display_state());
+        assert_eq!("[t]est", peekable_query.to_string());
 
         peekable_query.next();
-        assert_eq!("t[e]st", peekable_query.display_state());
+        assert_eq!("t[e]st", peekable_query.to_string());
 
         peekable_query.next();
-        assert_eq!("te[s]t", peekable_query.display_state());
+        assert_eq!("te[s]t", peekable_query.to_string());
 
         peekable_query.next();
-        assert_eq!("tes[t]", peekable_query.display_state());
+        assert_eq!("tes[t]", peekable_query.to_string());
     }
 }
