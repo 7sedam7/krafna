@@ -101,9 +101,7 @@ fn execute_select(fields: &[String], data: &mut Vec<Pod>) {
         .iter()
         .map(|s| {
             s.split_once('.')
-                .map(|(before, _)| before)
-                .unwrap_or(s)
-                .to_string()
+                .map_or(s.to_string(), |(before, _)| before.to_string())
         })
         .collect();
 
@@ -206,7 +204,7 @@ fn execute_where(condition: &Vec<ExpressionElement>, data: &[Pod]) -> Result<Vec
                 stack.push(element.clone());
             }
             ExpressionElement::ClosedBracket => {
-                while let Some(ExpressionElement::Operator(_)) = stack.last() {
+                while matches!(stack.last(), Some(ExpressionElement::Operator(_))) {
                     handle_operator_to_queue(&mut stack, &mut eval_stack, &mut bool_stack, data)?;
                 }
                 stack.pop();
@@ -407,7 +405,7 @@ pub fn get_nested_pod(field_name: &str, data: &Pod) -> Option<Pod> {
     for key in field_name.split('.') {
         match current.as_hashmap() {
             Ok(hash) => match hash.get(key) {
-                Some(pod) => current = pod.clone(),
+                Some(pod) => current.clone_from(pod),
                 None => return None,
             },
             Err(_) => return None,

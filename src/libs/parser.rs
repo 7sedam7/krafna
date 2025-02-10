@@ -1958,7 +1958,7 @@ mod tests {
         let query = format!("   {}", keyword);
         let mut peekable_query: PeekableDeque<char> = PeekableDeque::from_iter(query.chars());
 
-        if let Ok(()) = Query::parse_keyword(&mut peekable_query, &keyword, false) {
+        if Query::parse_keyword(&mut peekable_query, &keyword, false).is_ok() {
             return Err("It should fail since it is supposed to expect the keywoard and it has empty space in the beginning!".to_string());
         }
 
