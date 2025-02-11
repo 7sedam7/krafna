@@ -587,3 +587,130 @@ fn parse_naive_datetime(input: &str) -> Result<NaiveDateTime, String> {
         Err(format!("Invalid input: {}", input).to_string())
     }
 }
+
+/***************************************************************************************************
+* TESTS
+* *************************************************************************************************/
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gray_matter::Pod;
+
+    #[test]
+    fn test_execute_select_retains_specified_field() {
+        // Create sample Pod data with 3 fields
+        let field1 = "field1".to_string();
+        let searched_field = "field2".to_string();
+        let field3 = "field3".to_string();
+        let non_existant_searched_field = "field4".to_string();
+
+        let mut pod1 = Pod::new_hash();
+        let _ = pod1.insert(field1.clone(), Pod::String("value1".into()));
+        let _ = pod1.insert(searched_field.clone(), Pod::String("value2".into()));
+        let _ = pod1.insert(field3.clone(), Pod::String("value3".into()));
+
+        let mut pod2 = Pod::new_hash();
+        let _ = pod2.insert(field1.clone(), Pod::String("value4".into()));
+        let _ = pod2.insert(searched_field.clone(), Pod::String("value5".into()));
+        let _ = pod2.insert(field3.clone(), Pod::String("value6".into()));
+
+        let mut data = vec![pod1, pod2];
+        let expected_data_len = data.len();
+
+        // Execute select with field2
+        execute_select(
+            &[searched_field.clone(), non_existant_searched_field.clone()],
+            &mut data,
+        );
+
+        // Verify results
+        assert_eq!(
+            expected_data_len,
+            data.len(),
+            "Data length should remain the same"
+        );
+        for pod in data {
+            if let Pod::Hash(hash) = pod {
+                assert_eq!(1, hash.len(), "Pod should have exactly 1 field");
+                assert!(
+                    hash.contains_key(&searched_field),
+                    "Pod should retain field2"
+                );
+                assert!(
+                    !hash.contains_key(&non_existant_searched_field),
+                    "Pod should remove field1"
+                );
+                assert!(!hash.contains_key(&field1), "Pod should remove field1");
+                assert!(!hash.contains_key(&field3), "Pod should remove field3");
+            } else {
+                panic!("Expectek Pod::Hash");
+            }
+        }
+    }
+
+    #[test]
+    fn test_execute_select_retains_nested_field() {
+        // Create sample Pod data with 3 fields
+        let field1 = "field1".to_string();
+
+        let nest2 = "nest2".to_string();
+        let nest2_value = "nest2_value".to_string();
+
+        let nest3 = "nest3".to_string();
+        let nest3_value = "nest3_value".to_string();
+
+        let searched_field1 = format!("{}.{}", nest2, nest2);
+        let searched_field2 = format!("{}.{}.{}", nest3, nest3, nest3);
+
+        // setup pods
+        let mut setup_pod = Pod::new_hash();
+        let _ = setup_pod.insert(field1.clone(), Pod::String("value1".into()));
+        let _ = setup_pod.insert(nest2.clone(), {
+            let mut nest_pod = Pod::new_hash();
+            let _ = nest_pod.insert(nest2.clone(), Pod::String(nest2_value.clone()));
+            nest_pod
+        });
+        let _ = setup_pod.insert(nest3.clone(), {
+            let mut nest_pod = Pod::new_hash();
+            let _ = nest_pod.insert(nest3.clone(), {
+                let mut nest_pod = Pod::new_hash();
+                let _ = nest_pod.insert(nest3.clone(), Pod::String(nest3_value.clone()));
+                nest_pod
+            });
+            nest_pod
+        });
+
+        let mut data = vec![setup_pod.clone()];
+        let expected_data_len = data.len();
+
+        // Execute select with field2
+        execute_select(&[searched_field1, searched_field2], &mut data);
+
+        // Verify results
+        assert_eq!(
+            expected_data_len,
+            data.len(),
+            "Data length should remain the same"
+        );
+        for pod in data {
+            if let Pod::Hash(hash) = pod {
+                assert_eq!(2, hash.len(), "Pod should have exactly 2 field");
+                assert!(!hash.contains_key(&field1), "Pod should remove field1");
+
+                assert!(hash.contains_key(&nest2), "Pod should retain nest2");
+                assert_eq!(
+                    setup_pod.as_hashmap().unwrap().get(&nest2).unwrap(),
+                    hash.get(&nest2).unwrap()
+                );
+
+                assert!(hash.contains_key(&nest3), "Pod should retain nest3");
+                assert_eq!(
+                    setup_pod.as_hashmap().unwrap().get(&nest3).unwrap(),
+                    hash.get(&nest3).unwrap()
+                );
+            } else {
+                panic!("Expectek Pod::Hash");
+            }
+        }
+    }
+}
