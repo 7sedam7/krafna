@@ -13,7 +13,7 @@
 
 ## Installation
 
-### Cargo (Recommended)
+### Cargo
 
 ```bash
 cargo install krafna
