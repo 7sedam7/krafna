@@ -76,15 +76,15 @@ pub fn execute_query(
 
     //println!("Parsed query: {:?}", query);
     // FROM
-    let frontmatter_data = fetch_data(&query.from_function.unwrap())?;
+    let mut data = fetch_data(&query.from_function.unwrap())?;
     // WHERE
-    let mut result = execute_where(&query.where_expression, &frontmatter_data)?;
+    execute_where(&query.where_expression, &mut data)?;
     // ORDER BY
-    execute_order_by(&query.order_by_fields, &mut result)?;
+    execute_order_by(&query.order_by_fields, &mut data)?;
     // SELECT
-    execute_select(&query.select_fields, &mut result);
+    execute_select(&query.select_fields, &mut data);
 
-    Ok((query.select_fields, result))
+    Ok((query.select_fields, data))
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -151,9 +151,9 @@ fn execute_order_by(fields: &Vec<OrderByFieldOption>, data: &mut [Pod]) -> Resul
     Ok(())
 }
 
-fn execute_where(condition: &Vec<ExpressionElement>, data: &[Pod]) -> Result<Vec<Pod>, String> {
+fn execute_where(condition: &Vec<ExpressionElement>, data: &mut Vec<Pod>) -> Result<(), String> {
     if condition.is_empty() {
-        return Ok(data.to_vec());
+        return Ok(());
     }
 
     let mut stack = Vec::new();
@@ -222,13 +222,14 @@ fn execute_where(condition: &Vec<ExpressionElement>, data: &[Pod]) -> Result<Vec
     }
 
     let final_indexes = bool_stack.pop().unwrap();
+    let mut index = 0;
+    data.retain(|_| {
+        let result = final_indexes.contains(&index);
+        index += 1;
+        result
+    });
 
-    Ok(data
-        .iter()
-        .enumerate()
-        .filter(|(index, _)| final_indexes.contains(index))
-        .map(|(_, item)| item.clone())
-        .collect())
+    Ok(())
 }
 
 fn handle_operator_to_queue(
@@ -737,14 +738,17 @@ mod tests {
         let mut data = vec![pod1.clone(), pod2.clone()];
 
         // Execute order by field2
-        assert!(execute_order_by(
-            &vec![OrderByFieldOption {
-                field_name: field2.clone(),
-                order_direction: OrderDirection::ASC,
-            }],
-            &mut data,
-        )
-        .is_ok());
+        assert!(
+            execute_order_by(
+                &vec![OrderByFieldOption {
+                    field_name: field2.clone(),
+                    order_direction: OrderDirection::ASC,
+                }],
+                &mut data,
+            )
+            .is_ok(),
+            "Order by should be successful"
+        );
 
         // Verify results
         assert_eq!(2, data.len(), "Data length should remain the same");
@@ -776,14 +780,17 @@ mod tests {
         let mut data = vec![pod1.clone(), pod2.clone()];
 
         // Execute order by field2
-        assert!(execute_order_by(
-            &vec![OrderByFieldOption {
-                field_name: field2.clone(),
-                order_direction: OrderDirection::ASC,
-            }],
-            &mut data,
-        )
-        .is_ok());
+        assert!(
+            execute_order_by(
+                &vec![OrderByFieldOption {
+                    field_name: field2.clone(),
+                    order_direction: OrderDirection::ASC,
+                }],
+                &mut data,
+            )
+            .is_ok(),
+            "Order by should be successful"
+        );
 
         // Verify results
         assert_eq!(2, data.len(), "Data length should remain the same");
@@ -815,14 +822,17 @@ mod tests {
         let mut data = vec![pod1.clone(), pod2.clone()];
 
         // Execute order by field2
-        assert!(execute_order_by(
-            &vec![OrderByFieldOption {
-                field_name: field2.clone(),
-                order_direction: OrderDirection::DESC,
-            }],
-            &mut data,
-        )
-        .is_ok());
+        assert!(
+            execute_order_by(
+                &vec![OrderByFieldOption {
+                    field_name: field2.clone(),
+                    order_direction: OrderDirection::DESC,
+                }],
+                &mut data,
+            )
+            .is_ok(),
+            "Order by should be successful"
+        );
 
         // Verify results
         assert_eq!(2, data.len(), "Data length should remain the same");
@@ -863,25 +873,218 @@ mod tests {
         let mut data = vec![pod1.clone(), pod2.clone(), pod3.clone()];
 
         // Execute order by field2
-        assert!(execute_order_by(
-            &vec![
-                OrderByFieldOption {
-                    field_name: field2.clone(),
-                    order_direction: OrderDirection::DESC,
-                },
-                OrderByFieldOption {
-                    field_name: field1.clone(),
-                    order_direction: OrderDirection::ASC,
-                }
-            ],
-            &mut data,
-        )
-        .is_ok());
+        assert!(
+            execute_order_by(
+                &vec![
+                    OrderByFieldOption {
+                        field_name: field2.clone(),
+                        order_direction: OrderDirection::DESC,
+                    },
+                    OrderByFieldOption {
+                        field_name: field1.clone(),
+                        order_direction: OrderDirection::ASC,
+                    }
+                ],
+                &mut data,
+            )
+            .is_ok(),
+            "Order by should be successful"
+        );
 
         // Verify results
         assert_eq!(3, data.len(), "Data length should remain the same");
         assert_eq!(pod2, data[0], "First element should be pod2");
         assert_eq!(pod3, data[1], "Second element should be pod3");
         assert_eq!(pod1, data[2], "Second element should be pod1");
+    }
+
+    #[test]
+    fn test_execute_where_equals() {
+        // Create sample Pod data with 3 fields
+        let field1 = "field1".to_string();
+        let field2 = "field2".to_string();
+        let field2_value = "value2".to_string();
+        let field3 = "field3".to_string();
+
+        let mut pod1 = Pod::new_hash();
+        let _ = pod1.insert(field1.clone(), Pod::String("value1".to_string()));
+        let _ = pod1.insert(field2.clone(), Pod::String(field2_value.clone()));
+        let _ = pod1.insert(field3.clone(), Pod::String("value3".to_string()));
+
+        let mut pod2 = Pod::new_hash();
+        let _ = pod2.insert(field1.clone(), Pod::String("value4".to_string()));
+        let _ = pod2.insert(field2.clone(), Pod::String("value5".to_string()));
+        let _ = pod2.insert(field3.clone(), Pod::String("value6".to_string()));
+
+        let mut data = vec![pod1.clone(), pod2.clone()];
+
+        // Execute where field2 == "value2"
+        assert!(
+            execute_where(
+                &vec![
+                    ExpressionElement::FieldName(field2.clone()),
+                    ExpressionElement::Operator(Operator::Eq),
+                    ExpressionElement::FieldValue(FieldValue::String(field2_value.clone())),
+                ],
+                &mut data,
+            )
+            .is_ok(),
+            "Where should be successful"
+        );
+
+        // Verify results
+        assert_eq!(1, data.len(), "There should be 1 element in data");
+        assert_eq!(pod1, data[0], "Result should be pod1");
+    }
+
+    #[test]
+    fn test_execute_where_like() {
+        // Create sample Pod data with 3 fields
+        let field1 = "field1".to_string();
+
+        let field2 = "field2".to_string();
+        let field2_value1 = "smurph".to_string();
+        let field2_value2 = "value2".to_string();
+
+        let field3 = "field3".to_string();
+
+        let mut pod1 = Pod::new_hash();
+        let _ = pod1.insert(field1.clone(), Pod::String("value1".to_string()));
+        let _ = pod1.insert(field2.clone(), Pod::String(field2_value1.clone()));
+        let _ = pod1.insert(field3.clone(), Pod::String("value3".to_string()));
+
+        let mut pod2 = Pod::new_hash();
+        let _ = pod2.insert(field1.clone(), Pod::String("value4".to_string()));
+        let _ = pod2.insert(field2.clone(), Pod::String(field2_value2.clone()));
+        let _ = pod2.insert(field3.clone(), Pod::String("value6".to_string()));
+
+        let mut data = vec![pod1.clone(), pod2.clone()];
+
+        // Execute where field2 LIKE "val.*"
+        assert!(
+            execute_where(
+                &vec![
+                    ExpressionElement::FieldName(field2.clone()),
+                    ExpressionElement::Operator(Operator::Like),
+                    ExpressionElement::FieldValue(FieldValue::String("val.*".to_string())),
+                ],
+                &mut data,
+            )
+            .is_ok(),
+            "Where should be successful"
+        );
+
+        // Verify results
+        assert_eq!(1, data.len(), "There should be 1 element in data");
+        assert_eq!(pod2, data[0], "Result should be pod2");
+    }
+
+    #[test]
+    fn test_execute_where_complex() {
+        // Create sample Pod data with 3 fields
+        let value1 = 1.0;
+        let value2 = 2.0;
+        let value3 = 3.0;
+        let value4 = 4.0;
+
+        let field1 = "field1".to_string();
+        let field1_value1 = value4;
+        let field1_value2 = value1;
+        let field1_value3 = value1;
+        let field1_value4 = value1;
+        let field1_value5 = value1;
+
+        let field2 = "field2".to_string();
+        let field2_value1 = value2;
+        let field2_value2 = value2;
+        let field2_value3 = value1;
+        let field2_value4 = value1;
+        let field2_value5 = value1;
+
+        let field3 = "field3".to_string();
+        let field3_value1 = value3;
+        let field3_value2 = value2;
+        let field3_value3 = value3;
+        let field3_value4 = value2;
+        let field3_value5 = value3;
+
+        let field4 = "field4".to_string();
+        let field4_value1 = value4;
+        let field4_value2 = value3;
+        let field4_value3 = value4;
+        let field4_value4 = value4;
+        let field4_value5 = value3;
+
+        let mut pod1 = Pod::new_hash();
+        let _ = pod1.insert(field1.clone(), Pod::Float(field1_value1));
+        let _ = pod1.insert(field2.clone(), Pod::Float(field2_value1));
+        let _ = pod1.insert(field3.clone(), Pod::Float(field3_value1));
+        let _ = pod1.insert(field4.clone(), Pod::Float(field4_value1));
+
+        let mut pod2 = Pod::new_hash();
+        let _ = pod2.insert(field1.clone(), Pod::Float(field1_value2));
+        let _ = pod2.insert(field2.clone(), Pod::Float(field2_value2));
+        let _ = pod2.insert(field3.clone(), Pod::Float(field3_value2));
+        let _ = pod2.insert(field4.clone(), Pod::Float(field4_value2));
+
+        let mut pod3 = Pod::new_hash();
+        let _ = pod3.insert(field1.clone(), Pod::Float(field1_value3));
+        let _ = pod3.insert(field2.clone(), Pod::Float(field2_value3));
+        let _ = pod3.insert(field3.clone(), Pod::Float(field3_value3));
+        let _ = pod3.insert(field4.clone(), Pod::Float(field4_value3));
+
+        let mut pod4 = Pod::new_hash();
+        let _ = pod4.insert(field1.clone(), Pod::Float(field1_value4));
+        let _ = pod4.insert(field2.clone(), Pod::Float(field2_value4));
+        let _ = pod4.insert(field3.clone(), Pod::Float(field3_value4));
+        let _ = pod4.insert(field4.clone(), Pod::Float(field4_value4));
+
+        let mut pod5 = Pod::new_hash();
+        let _ = pod5.insert(field1.clone(), Pod::Float(field1_value5));
+        let _ = pod5.insert(field2.clone(), Pod::Float(field2_value5));
+        let _ = pod5.insert(field3.clone(), Pod::Float(field3_value5));
+        let _ = pod5.insert(field4.clone(), Pod::Float(field4_value5));
+
+        let mut data = vec![
+            pod1.clone(),
+            pod2.clone(),
+            pod3.clone(),
+            pod4.clone(),
+            pod5.clone(),
+        ];
+
+        // Execute where f1 == v4 or f2 == v1 and (f3 == v2 or f4 == v3)
+        assert!(
+            execute_where(
+                &vec![
+                    ExpressionElement::FieldName(field1.clone()),
+                    ExpressionElement::Operator(Operator::Eq),
+                    ExpressionElement::FieldValue(FieldValue::Number(value4)),
+                    ExpressionElement::Operator(Operator::Or),
+                    ExpressionElement::FieldName(field2.clone()),
+                    ExpressionElement::Operator(Operator::Eq),
+                    ExpressionElement::FieldValue(FieldValue::Number(value1)),
+                    ExpressionElement::Operator(Operator::And),
+                    ExpressionElement::OpenedBracket,
+                    ExpressionElement::FieldName(field3.clone()),
+                    ExpressionElement::Operator(Operator::Eq),
+                    ExpressionElement::FieldValue(FieldValue::Number(value2)),
+                    ExpressionElement::Operator(Operator::Or),
+                    ExpressionElement::FieldName(field4.clone()),
+                    ExpressionElement::Operator(Operator::Eq),
+                    ExpressionElement::FieldValue(FieldValue::Number(value3)),
+                    ExpressionElement::ClosedBracket,
+                ],
+                &mut data,
+            )
+            .is_ok(),
+            "Where should be successful"
+        );
+
+        // Verify results
+        assert_eq!(3, data.len(), "There should be 3 elements in data");
+        assert_eq!(pod1, data[0], "Result should have pod1");
+        assert_eq!(pod4, data[1], "Result should have pod4");
+        assert_eq!(pod5, data[2], "Result should have pod5");
     }
 }
