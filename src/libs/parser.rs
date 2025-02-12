@@ -128,6 +128,34 @@ impl FieldValue {
             _ => false,
         }
     }
+
+    pub fn as_list(&self) -> Option<&Vec<FieldValue>> {
+        match self {
+            FieldValue::List(list) => Some(list),
+            _ => None,
+        }
+    }
+
+    pub fn as_string(&self) -> Option<&String> {
+        match self {
+            FieldValue::String(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    pub fn as_f64(&self) -> Option<f64> {
+        match self {
+            FieldValue::Number(n) => Some(*n),
+            _ => None,
+        }
+    }
+
+    pub fn as_bool(&self) -> Option<bool> {
+        match self {
+            FieldValue::Bool(b) => Some(*b),
+            _ => None,
+        }
+    }
 }
 
 impl Display for FieldValue {

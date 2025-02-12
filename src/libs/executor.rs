@@ -114,7 +114,7 @@ fn execute_select(fields: &[String], data: &mut Vec<Pod>) {
 
 fn execute_order_by(fields: &Vec<OrderByFieldOption>, data: &mut [Pod]) -> Result<(), String> {
     data.sort_by(|a, b| {
-        // do some stuff
+        // TODO: add support for functions in order by
         for orderby_field in fields {
             let a_mby = get_field_value(&orderby_field.field_name, a);
             let b_mby = get_field_value(&orderby_field.field_name, b);
@@ -125,7 +125,6 @@ fn execute_order_by(fields: &Vec<OrderByFieldOption>, data: &mut [Pod]) -> Resul
                 (Some(a_val), Some(b_val)) => {
                     if let (FieldValue::String(a_str), FieldValue::String(b_str)) = (&a_val, &b_val)
                     {
-                        // TODO: try to compare as dates
                         a_str.cmp(b_str)
                     } else {
                         a_val
@@ -605,14 +604,14 @@ mod tests {
         let non_existant_searched_field = "field4".to_string();
 
         let mut pod1 = Pod::new_hash();
-        let _ = pod1.insert(field1.clone(), Pod::String("value1".into()));
-        let _ = pod1.insert(searched_field.clone(), Pod::String("value2".into()));
-        let _ = pod1.insert(field3.clone(), Pod::String("value3".into()));
+        let _ = pod1.insert(field1.clone(), Pod::String("value1".to_string()));
+        let _ = pod1.insert(searched_field.clone(), Pod::String("value2".to_string()));
+        let _ = pod1.insert(field3.clone(), Pod::String("value3".to_string()));
 
         let mut pod2 = Pod::new_hash();
-        let _ = pod2.insert(field1.clone(), Pod::String("value4".into()));
-        let _ = pod2.insert(searched_field.clone(), Pod::String("value5".into()));
-        let _ = pod2.insert(field3.clone(), Pod::String("value6".into()));
+        let _ = pod2.insert(field1.clone(), Pod::String("value4".to_string()));
+        let _ = pod2.insert(searched_field.clone(), Pod::String("value5".to_string()));
+        let _ = pod2.insert(field3.clone(), Pod::String("value6".to_string()));
 
         let mut data = vec![pod1, pod2];
         let expected_data_len = data.len();
@@ -664,7 +663,7 @@ mod tests {
 
         // setup pods
         let mut setup_pod = Pod::new_hash();
-        let _ = setup_pod.insert(field1.clone(), Pod::String("value1".into()));
+        let _ = setup_pod.insert(field1.clone(), Pod::String("value1".to_string()));
         let _ = setup_pod.insert(nest2.clone(), {
             let mut nest_pod = Pod::new_hash();
             let _ = nest_pod.insert(nest2.clone(), Pod::String(nest2_value.clone()));
@@ -712,5 +711,177 @@ mod tests {
                 panic!("Expectek Pod::Hash");
             }
         }
+    }
+
+    #[test]
+    fn test_execute_order_by_no_change() {
+        // Create sample Pod data with 3 fields
+        let field1 = "field1".to_string();
+
+        let field2 = "field2".to_string();
+        let field2_value1 = "value1".to_string();
+        let field2_value2 = "value2".to_string();
+
+        let field3 = "field3".to_string();
+
+        let mut pod1 = Pod::new_hash();
+        let _ = pod1.insert(field1.clone(), Pod::String("value1".to_string()));
+        let _ = pod1.insert(field2.clone(), Pod::String(field2_value1.clone()));
+        let _ = pod1.insert(field3.clone(), Pod::String("value3".to_string()));
+
+        let mut pod2 = Pod::new_hash();
+        let _ = pod2.insert(field1.clone(), Pod::String("value4".to_string()));
+        let _ = pod2.insert(field2.clone(), Pod::String(field2_value2.clone()));
+        let _ = pod2.insert(field3.clone(), Pod::String("value6".to_string()));
+
+        let mut data = vec![pod1.clone(), pod2.clone()];
+
+        // Execute order by field2
+        assert!(execute_order_by(
+            &vec![OrderByFieldOption {
+                field_name: field2.clone(),
+                order_direction: OrderDirection::ASC,
+            }],
+            &mut data,
+        )
+        .is_ok());
+
+        // Verify results
+        assert_eq!(2, data.len(), "Data length should remain the same");
+        assert_eq!(pod1, data[0], "First element should be pod1");
+        assert_eq!(pod2, data[1], "Second element should be pod2");
+    }
+
+    #[test]
+    fn test_execute_order_by_asc() {
+        // Create sample Pod data with 3 fields
+        let field1 = "field1".to_string();
+
+        let field2 = "field2".to_string();
+        let field2_value1 = "value2".to_string();
+        let field2_value2 = "value1".to_string();
+
+        let field3 = "field3".to_string();
+
+        let mut pod1 = Pod::new_hash();
+        let _ = pod1.insert(field1.clone(), Pod::String("value1".to_string()));
+        let _ = pod1.insert(field2.clone(), Pod::String(field2_value1.clone()));
+        let _ = pod1.insert(field3.clone(), Pod::String("value3".to_string()));
+
+        let mut pod2 = Pod::new_hash();
+        let _ = pod2.insert(field1.clone(), Pod::String("value4".to_string()));
+        let _ = pod2.insert(field2.clone(), Pod::String(field2_value2.clone()));
+        let _ = pod2.insert(field3.clone(), Pod::String("value6".to_string()));
+
+        let mut data = vec![pod1.clone(), pod2.clone()];
+
+        // Execute order by field2
+        assert!(execute_order_by(
+            &vec![OrderByFieldOption {
+                field_name: field2.clone(),
+                order_direction: OrderDirection::ASC,
+            }],
+            &mut data,
+        )
+        .is_ok());
+
+        // Verify results
+        assert_eq!(2, data.len(), "Data length should remain the same");
+        assert_eq!(pod2, data[0], "First element should be pod2");
+        assert_eq!(pod1, data[1], "Second element should be pod1");
+    }
+
+    #[test]
+    fn test_execute_order_desc() {
+        // Create sample Pod data with 3 fields
+        let field1 = "field1".to_string();
+
+        let field2 = "field2".to_string();
+        let field2_value1 = "value1".to_string();
+        let field2_value2 = "value2".to_string();
+
+        let field3 = "field3".to_string();
+
+        let mut pod1 = Pod::new_hash();
+        let _ = pod1.insert(field1.clone(), Pod::String("value1".to_string()));
+        let _ = pod1.insert(field2.clone(), Pod::String(field2_value1.clone()));
+        let _ = pod1.insert(field3.clone(), Pod::String("value3".to_string()));
+
+        let mut pod2 = Pod::new_hash();
+        let _ = pod2.insert(field1.clone(), Pod::String("value4".to_string()));
+        let _ = pod2.insert(field2.clone(), Pod::String(field2_value2.clone()));
+        let _ = pod2.insert(field3.clone(), Pod::String("value6".to_string()));
+
+        let mut data = vec![pod1.clone(), pod2.clone()];
+
+        // Execute order by field2
+        assert!(execute_order_by(
+            &vec![OrderByFieldOption {
+                field_name: field2.clone(),
+                order_direction: OrderDirection::DESC,
+            }],
+            &mut data,
+        )
+        .is_ok());
+
+        // Verify results
+        assert_eq!(2, data.len(), "Data length should remain the same");
+        assert_eq!(pod2, data[0], "First element should be pod2");
+        assert_eq!(pod1, data[1], "Second element should be pod1");
+    }
+
+    #[test]
+    fn test_execute_order_multi() {
+        // Create sample Pod data with 3 fields
+        let field1 = "field1".to_string();
+        let field1_value1 = "value1".to_string();
+        let field1_value2 = "value2".to_string();
+        let field1_value3 = "value3".to_string();
+
+        let field2 = "field2".to_string();
+        let field2_value1 = "value1".to_string();
+        let field2_value2 = "value2".to_string();
+        let field2_value3 = "value2".to_string();
+
+        let field3 = "field3".to_string();
+
+        let mut pod1 = Pod::new_hash();
+        let _ = pod1.insert(field1.clone(), Pod::String(field1_value1.clone()));
+        let _ = pod1.insert(field2.clone(), Pod::String(field2_value1.clone()));
+        let _ = pod1.insert(field3.clone(), Pod::String("value3".to_string()));
+
+        let mut pod2 = Pod::new_hash();
+        let _ = pod2.insert(field1.clone(), Pod::String(field1_value2.clone()));
+        let _ = pod2.insert(field2.clone(), Pod::String(field2_value2.clone()));
+        let _ = pod2.insert(field3.clone(), Pod::String("value6".to_string()));
+
+        let mut pod3 = Pod::new_hash();
+        let _ = pod3.insert(field1.clone(), Pod::String(field1_value3.clone()));
+        let _ = pod3.insert(field2.clone(), Pod::String(field2_value3.clone()));
+        let _ = pod3.insert(field3.clone(), Pod::String("value6".to_string()));
+
+        let mut data = vec![pod1.clone(), pod2.clone(), pod3.clone()];
+
+        // Execute order by field2
+        assert!(execute_order_by(
+            &vec![
+                OrderByFieldOption {
+                    field_name: field2.clone(),
+                    order_direction: OrderDirection::DESC,
+                },
+                OrderByFieldOption {
+                    field_name: field1.clone(),
+                    order_direction: OrderDirection::ASC,
+                }
+            ],
+            &mut data,
+        )
+        .is_ok());
+
+        // Verify results
+        assert_eq!(3, data.len(), "Data length should remain the same");
+        assert_eq!(pod2, data[0], "First element should be pod2");
+        assert_eq!(pod3, data[1], "Second element should be pod3");
+        assert_eq!(pod1, data[2], "Second element should be pod1");
     }
 }
