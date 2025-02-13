@@ -138,7 +138,7 @@ fn execute_order_by(fields: &Vec<OrderByFieldOption>, data: &mut [Pod]) -> Resul
 }
 
 fn execute_where(expression: &Vec<ExpressionElement>, data: &mut Vec<Pod>) -> Result<(), String> {
-    if expression.is_empty() {
+    if expression.is_empty() || data.is_empty() {
         return Ok(());
     }
 
@@ -348,6 +348,7 @@ fn execute_function(func: &Function, data: &Pod) -> Result<FieldValue, String> {
 fn execute_operation_like(a: &FieldValue, b: &FieldValue) -> bool {
     match (a, b) {
         (FieldValue::String(a_str), FieldValue::String(b_str)) => {
+            // TODO: consider DDosing of this
             Regex::new(b_str).map_or(false, |re| re.is_match(a_str))
         }
         _ => false,
