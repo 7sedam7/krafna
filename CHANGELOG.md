@@ -5,6 +5,7 @@
 - Added tests for executor (select, where, order_by)
 - Added as_(list, string, f64, bool) to FieldValue
 - Added DATE function that parses date from string
+- DATEADD function can add optional 4th argument for format
 
 ### Changed
 - No changes

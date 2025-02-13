@@ -416,12 +416,34 @@ fn execute_function_date_add(func: &Function, data: &Pod) -> Result<FieldValue, 
             ))
         }
     };
-    let naive_datetime = match parse_naive_datetime(&date_str, None) {
+
+    // FOURTH ARGUMENT
+    let format_str = match &func.args.get(3) {
+        Some(FunctionArg::FieldName(field_name)) => match get_field_value(field_name, data) {
+            FieldValue::String(format_str) => Some(format_str),
+            FieldValue::Null => None,
+            _ => {
+                return Err(format!(
+                    "Function DATEADD expects fourth argument to be a format, but found: {:?}",
+                    func.args[3]
+                ))
+            }
+        },
+        Some(FunctionArg::FieldValue(FieldValue::String(format_str))) => Some(format_str.clone()),
+        None => None,
+        _ => {
+            return Err(format!(
+                "Function DATEADD expects fourth argument to be a format, but found: {:?}",
+                func.args[3]
+            ))
+        }
+    };
+    let naive_datetime = match parse_naive_datetime(&date_str, &format_str) {
         Ok(date) => date,
         Err(_) => {
             return Err(format!(
-                "Function DATEADD expects third argument to be a date, but found: {:?}",
-                func.args[2]
+                "Function DATEADD did not succeed to parse {:?} into a date with format \"{:?}\"",
+                date_str, format_str
             ))
         }
     };
@@ -516,12 +538,12 @@ fn execute_function_date(func: &Function, data: &Pod) -> Result<FieldValue, Stri
         }
     };
 
-    let naive_datetime = match parse_naive_datetime(&date_str, format_str) {
+    let naive_datetime = match parse_naive_datetime(&date_str, &format_str) {
         Ok(date) => date,
         Err(_) => {
             return Err(format!(
-                "Function DATEADD expects third argument to be a date, but found: {:?}",
-                func.args[2]
+                "Function DATE did not succeed to parse {:?} into a date with format \"{:?}\"",
+                date_str, format_str
             ))
         }
     };
@@ -532,11 +554,16 @@ fn execute_function_date(func: &Function, data: &Pod) -> Result<FieldValue, Stri
 }
 
 // TODO: use for `execute_function_date` that parses a date `DATE(<date>, <optional format>)`
-fn parse_naive_datetime(input: &str, format: Option<String>) -> Result<NaiveDateTime, String> {
+fn parse_naive_datetime(input: &str, format: &Option<String>) -> Result<NaiveDateTime, String> {
     if let Some(format) = format {
-        return match NaiveDateTime::parse_from_str(input, &format) {
+        if let Ok(naive_date) = NaiveDate::parse_from_str(input, format) {
+            return Ok(naive_date
+                .and_hms_opt(0, 0, 0)
+                .expect("Failed to parse date"));
+        };
+        return match NaiveDateTime::parse_from_str(input, format) {
             Ok(naive_datetime) => Ok(naive_datetime),
-            Err(_) => Err(format!("Invalid input: {}", input).to_string()),
+            Err(err) => Err(format!("Invalid input: {}; {}", input, err)),
         };
     }
     // Try to parse as
@@ -555,7 +582,7 @@ fn parse_naive_datetime(input: &str, format: Option<String>) -> Result<NaiveDate
             .expect("Failed to parse date"))
     } else {
         // Return an error if neither format works
-        Err(format!("Invalid input: {}", input).to_string())
+        Err(format!("Invalid input: {}", input))
     }
 }
 
@@ -990,10 +1017,7 @@ mod tests {
     fn test_execute_where_func() {
         // Create sample Pod data with 3 fields
         let date_value = "2021-01-01".to_string();
-        let date_value_plus_1_year = parse_naive_datetime("2022-01-01", None)
-            .unwrap()
-            .format("%Y-%m-%dT%H:%M:%S")
-            .to_string();
+        let date_value_plus_1_year = "2022-01+01".to_string();
 
         let field1 = "field1".to_string();
         let field2 = "field2".to_string();
@@ -1015,7 +1039,13 @@ mod tests {
         assert!(
             execute_where(
                 &vec![
-                    ExpressionElement::FieldName(field2.clone()),
+                    ExpressionElement::Function(Function {
+                        name: "DATE".to_string(),
+                        args: vec![
+                            FunctionArg::FieldName(field2.clone()),
+                            FunctionArg::FieldValue(FieldValue::String("%Y-%m+%d".to_string()))
+                        ]
+                    }),
                     ExpressionElement::Operator(Operator::Eq),
                     ExpressionElement::Function(Function {
                         name: "DATEADD".to_string(),
