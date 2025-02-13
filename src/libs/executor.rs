@@ -177,6 +177,8 @@ fn execute_where(condition: &Vec<ExpressionElement>, data: &mut Vec<Pod>) -> Res
         Operator::Power => 5,
     };
 
+    // TODO: iterate over data array and run evaluation per element. Expression evaluation can be
+    // extracted to a separate function. This can be parallelised.
     for element in condition {
         match element {
             ExpressionElement::OpenedBracket => {
