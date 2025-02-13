@@ -112,15 +112,13 @@ fn execute_order_by(fields: &Vec<OrderByFieldOption>, data: &mut [Pod]) -> Resul
             let fv_a = get_field_value(&orderby_field.field_name, a);
             let fv_b = get_field_value(&orderby_field.field_name, b);
 
-            let comparison = fv_a.partial_cmp(&fv_b).unwrap_or({
-                if let FieldValue::Null = fv_a {
-                    std::cmp::Ordering::Less
-                } else if let FieldValue::Null = fv_b {
-                    std::cmp::Ordering::Greater
-                } else {
-                    std::cmp::Ordering::Equal
-                }
-            });
+            let comparison: std::cmp::Ordering = if matches!(fv_a, FieldValue::Null) {
+                std::cmp::Ordering::Less
+            } else if matches!(fv_b, FieldValue::Null) {
+                std::cmp::Ordering::Greater
+            } else {
+                fv_a.partial_cmp(&fv_b).unwrap_or(std::cmp::Ordering::Equal)
+            };
 
             if comparison.is_ne() {
                 if orderby_field.order_direction == OrderDirection::ASC {
@@ -342,6 +340,7 @@ fn pod_array_to_field_value(list: &Vec<Pod>) -> FieldValue {
 fn execute_function(func: &Function, data: &Pod) -> Result<FieldValue, String> {
     match func.name.to_uppercase().as_str() {
         "DATEADD" => Ok(execute_function_date_add(func, data)?),
+        "DATE" => Ok(execute_function_date(func, data)?),
         _ => Err(format!("TODO: Implement function execution: {:?}!", func)),
     }
 }
@@ -355,6 +354,7 @@ fn execute_operation_like(a: &FieldValue, b: &FieldValue) -> bool {
     }
 }
 
+const DATE_FORMAT: &str = "%Y-%m-%dT%H:%M:%S";
 fn execute_function_date_add(func: &Function, data: &Pod) -> Result<FieldValue, String> {
     if func.args.len() != 3 {
         return Err(format!(
@@ -413,7 +413,7 @@ fn execute_function_date_add(func: &Function, data: &Pod) -> Result<FieldValue, 
             ))
         }
     };
-    let naive_datetime = match parse_naive_datetime(&date_str) {
+    let naive_datetime = match parse_naive_datetime(&date_str, None) {
         Ok(date) => date,
         Err(_) => {
             return Err(format!(
@@ -459,12 +459,83 @@ fn execute_function_date_add(func: &Function, data: &Pod) -> Result<FieldValue, 
     };
 
     Ok(FieldValue::String(
-        result_date.format("%Y-%m-%dT%H:%M:%S").to_string(),
+        result_date.format(DATE_FORMAT).to_string(),
+    ))
+}
+
+fn execute_function_date(func: &Function, data: &Pod) -> Result<FieldValue, String> {
+    if func.args.len() != 1 && func.args.len() != 2 {
+        return Err(format!(
+            "Function DATE expects 1 or 2 arguments, but found {}!",
+            func.args.len()
+        ));
+    }
+
+    // FIRST ARGUMENT
+    let date_str = match &func.args[0] {
+        FunctionArg::FieldName(field_name) => match get_field_value(field_name, data) {
+            FieldValue::String(date_str) => date_str,
+            _ => {
+                return Err(format!(
+                    "Function DATE expects first argument to be a date, but found: {:?}",
+                    func.args[0]
+                ))
+            }
+        },
+        FunctionArg::FieldValue(FieldValue::String(date_str)) => date_str.clone(),
+        _ => {
+            return Err(format!(
+                "Function DATE expects first argument to be a date, but found: {:?}",
+                func.args[0]
+            ))
+        }
+    };
+
+    // SECOND ARGUMENT
+    let format_str = match &func.args.get(1) {
+        Some(FunctionArg::FieldName(field_name)) => match get_field_value(field_name, data) {
+            FieldValue::String(format_str) => Some(format_str),
+            FieldValue::Null => None,
+            _ => {
+                return Err(format!(
+                    "Function DATE expects second argument to be a format, but found: {:?}",
+                    func.args[1]
+                ))
+            }
+        },
+        Some(FunctionArg::FieldValue(FieldValue::String(format_str))) => Some(format_str.clone()),
+        None => None,
+        _ => {
+            return Err(format!(
+                "Function DATE expects second argument to be a format, but found: {:?}",
+                func.args[1]
+            ))
+        }
+    };
+
+    let naive_datetime = match parse_naive_datetime(&date_str, format_str) {
+        Ok(date) => date,
+        Err(_) => {
+            return Err(format!(
+                "Function DATEADD expects third argument to be a date, but found: {:?}",
+                func.args[2]
+            ))
+        }
+    };
+
+    Ok(FieldValue::String(
+        naive_datetime.format(DATE_FORMAT).to_string(),
     ))
 }
 
 // TODO: use for `execute_function_date` that parses a date `DATE(<date>, <optional format>)`
-fn parse_naive_datetime(input: &str) -> Result<NaiveDateTime, String> {
+fn parse_naive_datetime(input: &str, format: Option<String>) -> Result<NaiveDateTime, String> {
+    if let Some(format) = format {
+        return match NaiveDateTime::parse_from_str(input, &format) {
+            Ok(naive_datetime) => Ok(naive_datetime),
+            Err(_) => Err(format!("Invalid input: {}", input).to_string()),
+        };
+    }
     // Try to parse as
     if let Ok(date_time) = input.parse::<DateTime<Utc>>() {
         return Ok(date_time.naive_utc());
@@ -612,6 +683,46 @@ mod tests {
     }
 
     #[test]
+    fn test_execute_order_by_null_values() {
+        // Create sample Pod data with 3 fields
+        let field1 = "field1".to_string();
+
+        let field2 = "field2".to_string();
+        let field2_value1 = "value1".to_string();
+
+        let field3 = "field3".to_string();
+
+        let mut pod1 = Pod::new_hash();
+        let _ = pod1.insert(field1.clone(), Pod::String("value1".to_string()));
+        let _ = pod1.insert(field2.clone(), Pod::String(field2_value1.clone()));
+        let _ = pod1.insert(field3.clone(), Pod::String("value3".to_string()));
+
+        let mut pod2 = Pod::new_hash();
+        let _ = pod2.insert(field1.clone(), Pod::String("value4".to_string()));
+        let _ = pod2.insert(field3.clone(), Pod::String("value6".to_string()));
+
+        let mut data = vec![pod1.clone(), pod2.clone()];
+
+        // Execute order by field2
+        assert!(
+            execute_order_by(
+                &vec![OrderByFieldOption {
+                    field_name: field2.clone(),
+                    order_direction: OrderDirection::ASC,
+                }],
+                &mut data,
+            )
+            .is_ok(),
+            "Order by should be successful"
+        );
+
+        // Verify results
+        assert_eq!(2, data.len(), "Data length should remain the same");
+        assert_eq!(pod2, data[0], "First element should be pod2");
+        assert_eq!(pod1, data[1], "Second element should be pod1");
+    }
+
+    #[test]
     fn test_execute_order_by_no_change() {
         // Create sample Pod data with 3 fields
         let field1 = "field1".to_string();
@@ -696,7 +807,7 @@ mod tests {
     }
 
     #[test]
-    fn test_execute_order_desc() {
+    fn test_execute_order_by_desc() {
         // Create sample Pod data with 3 fields
         let field1 = "field1".to_string();
 
@@ -832,6 +943,95 @@ mod tests {
         // Verify results
         assert_eq!(1, data.len(), "There should be 1 element in data");
         assert_eq!(pod1, data[0], "Result should be pod1");
+    }
+
+    #[test]
+    fn test_execute_where_equals_no_field() {
+        // Create sample Pod data with 3 fields
+        let field1 = "field1".to_string();
+        let field2 = "field2".to_string();
+        let field2_value = "value2".to_string();
+        let field3 = "field3".to_string();
+
+        let mut pod1 = Pod::new_hash();
+        let _ = pod1.insert(field1.clone(), Pod::String("value1".to_string()));
+        let _ = pod1.insert(field3.clone(), Pod::String("value3".to_string()));
+
+        let mut pod2 = Pod::new_hash();
+        let _ = pod2.insert(field1.clone(), Pod::String("value4".to_string()));
+        let _ = pod2.insert(field2.clone(), Pod::String(field2_value.clone()));
+        let _ = pod2.insert(field3.clone(), Pod::String("value6".to_string()));
+
+        let mut data = vec![pod1.clone(), pod2.clone()];
+
+        // Execute where field2 == "value2"
+        assert!(
+            execute_where(
+                &vec![
+                    ExpressionElement::FieldName(field2.clone()),
+                    ExpressionElement::Operator(Operator::Eq),
+                    ExpressionElement::FieldValue(FieldValue::String(field2_value.clone())),
+                ],
+                &mut data,
+            )
+            .is_ok(),
+            "Where should be successful"
+        );
+
+        // Verify results
+        assert_eq!(1, data.len(), "There should be 1 element in data");
+        assert_eq!(pod2, data[0], "Result should be pod1");
+    }
+
+    #[test]
+    fn test_execute_where_func() {
+        // Create sample Pod data with 3 fields
+        let date_value = "2021-01-01".to_string();
+        let date_value_plus_1_year = parse_naive_datetime("2022-01-01", None)
+            .unwrap()
+            .format("%Y-%m-%dT%H:%M:%S")
+            .to_string();
+
+        let field1 = "field1".to_string();
+        let field2 = "field2".to_string();
+        let field3 = "field3".to_string();
+
+        let mut pod1 = Pod::new_hash();
+        let _ = pod1.insert(field1.clone(), Pod::String("value1".to_string()));
+        let _ = pod1.insert(field2.clone(), Pod::String(date_value_plus_1_year.clone()));
+        let _ = pod1.insert(field3.clone(), Pod::String("value3".to_string()));
+
+        let mut pod2 = Pod::new_hash();
+        let _ = pod2.insert(field1.clone(), Pod::String("value4".to_string()));
+        let _ = pod2.insert(field2.clone(), Pod::String("value5".to_string()));
+        let _ = pod2.insert(field3.clone(), Pod::String("value6".to_string()));
+
+        let mut data = vec![pod1.clone(), pod2.clone()];
+
+        // Execute where field2 LIKE "val.*"
+        assert!(
+            execute_where(
+                &vec![
+                    ExpressionElement::FieldName(field2.clone()),
+                    ExpressionElement::Operator(Operator::Eq),
+                    ExpressionElement::Function(Function {
+                        name: "DATEADD".to_string(),
+                        args: vec![
+                            FunctionArg::FieldName("YEAR".to_string()),
+                            FunctionArg::FieldValue(FieldValue::Number(1.0)),
+                            FunctionArg::FieldValue(FieldValue::String(date_value))
+                        ]
+                    }),
+                ],
+                &mut data,
+            )
+            .is_ok(),
+            "Where should be successful"
+        );
+
+        // Verify results
+        assert_eq!(1, data.len(), "There should be 1 element in data");
+        assert_eq!(pod1, data[0], "Result should be pod2");
     }
 
     #[test]
