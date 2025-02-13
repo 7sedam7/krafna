@@ -222,20 +222,23 @@ fn handle_operator_to_queue(
     queue: &mut Vec<FieldValue>,
 ) -> Result<(), String> {
     let should_be_operator = stack.pop();
-    if let Some(ExpressionElement::Operator(operator)) = should_be_operator {
-        let right = queue
-            .pop()
-            .ok_or("Expected operand on the queue, but found nothing!")?;
-        let left = queue
-            .pop()
-            .ok_or("Expected operand on the queue, but found nothing!")?;
+    match should_be_operator {
+        Some(ExpressionElement::Operator(operator)) => {
+            let right = queue
+                .pop()
+                .ok_or("Expected operand on the queue, but found nothing!")?;
+            let left = queue
+                .pop()
+                .ok_or("Expected operand on the queue, but found nothing!")?;
 
-        queue.push(execute_operation(&operator, &left, &right)?);
-    } else {
-        return Err(format!(
-            "Expected operator on top of the stack, but found {:?}!",
-            should_be_operator
-        ));
+            queue.push(execute_operation(&operator, &left, &right)?);
+        }
+        _ => {
+            return Err(format!(
+                "Expected operator on top of the stack, but found {:?}!",
+                should_be_operator
+            ));
+        }
     }
 
     Ok(())
@@ -288,7 +291,6 @@ fn execute_operation(
 ***************************************************************************************************/
 pub fn get_field_value(field_name: &str, data: &Pod) -> FieldValue {
     match get_nested_pod(field_name, data) {
-        Some(Pod::Null) => FieldValue::Null,
         Some(Pod::String(str)) => FieldValue::String(str.clone()),
         Some(Pod::Float(num)) => FieldValue::Number(num),
         Some(Pod::Integer(num)) => FieldValue::Number(num as f64),
@@ -298,7 +300,7 @@ pub fn get_field_value(field_name: &str, data: &Pod) -> FieldValue {
             Ok(val) => FieldValue::String(val.to_string()),
             Err(_) => FieldValue::Null,
         },
-        None => FieldValue::Null,
+        _ => FieldValue::Null,
     }
 }
 
@@ -981,7 +983,7 @@ mod tests {
 
         // Verify results
         assert_eq!(1, data.len(), "There should be 1 element in data");
-        assert_eq!(pod2, data[0], "Result should be pod1");
+        assert_eq!(pod2, data[0], "Result should be pod2");
     }
 
     #[test]
@@ -1032,7 +1034,7 @@ mod tests {
 
         // Verify results
         assert_eq!(1, data.len(), "There should be 1 element in data");
-        assert_eq!(pod1, data[0], "Result should be pod2");
+        assert_eq!(pod1, data[0], "Result should be pod1");
     }
 
     #[test]
