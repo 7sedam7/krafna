@@ -101,24 +101,14 @@ impl Function {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, PartialOrd, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum FieldValue {
     List(Vec<FieldValue>), // TODO: implement parsing of lists in a query []
     String(String),
     Number(f64),
     Bool(bool),
-}
-
-impl PartialOrd for FieldValue {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        match (self, other) {
-            (FieldValue::String(s1), FieldValue::String(s2)) => s1.partial_cmp(s2),
-            (FieldValue::Number(n1), FieldValue::Number(n2)) => n1.partial_cmp(n2),
-            (FieldValue::Bool(b1), FieldValue::Bool(b2)) => b1.partial_cmp(b2),
-            _ => None,
-        }
-    }
+    Null,
 }
 
 impl FieldValue {
@@ -164,6 +154,7 @@ impl Display for FieldValue {
             f,
             "{}",
             match self {
+                FieldValue::Null => "NULL".to_string(),
                 FieldValue::String(s) => s.clone(),
                 FieldValue::Number(n) => n.to_string(),
                 FieldValue::Bool(b) => b.to_string(),

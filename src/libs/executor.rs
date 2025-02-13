@@ -2,7 +2,6 @@ use std::error::Error;
 
 use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, Utc};
 use gray_matter::Pod;
-use hashbrown::HashSet;
 use regex::Regex;
 
 use crate::libs::data_fetcher::fetch_data;
@@ -87,12 +86,6 @@ pub fn execute_query(
     Ok((query.select_fields, data))
 }
 
-#[derive(Debug, PartialEq, Clone)]
-enum Operand {
-    QueueElement(ExpressionElement),
-    BoolElement(HashSet<usize>),
-}
-
 fn execute_select(fields: &[String], data: &mut Vec<Pod>) {
     // TODO: implement * to select all values
     // TODO: implement function calls in select
@@ -116,23 +109,18 @@ fn execute_order_by(fields: &Vec<OrderByFieldOption>, data: &mut [Pod]) -> Resul
     data.sort_by(|a, b| {
         // TODO: add support for functions in order by
         for orderby_field in fields {
-            let a_mby = get_field_value(&orderby_field.field_name, a);
-            let b_mby = get_field_value(&orderby_field.field_name, b);
+            let fv_a = get_field_value(&orderby_field.field_name, a);
+            let fv_b = get_field_value(&orderby_field.field_name, b);
 
-            let comparison = match (a_mby, b_mby) {
-                (None, _) => std::cmp::Ordering::Less,
-                (_, None) => std::cmp::Ordering::Greater,
-                (Some(a_val), Some(b_val)) => {
-                    if let (FieldValue::String(a_str), FieldValue::String(b_str)) = (&a_val, &b_val)
-                    {
-                        a_str.cmp(b_str)
-                    } else {
-                        a_val
-                            .partial_cmp(&b_val)
-                            .unwrap_or(std::cmp::Ordering::Equal)
-                    }
+            let comparison = fv_a.partial_cmp(&fv_b).unwrap_or({
+                if let FieldValue::Null = fv_a {
+                    std::cmp::Ordering::Less
+                } else if let FieldValue::Null = fv_b {
+                    std::cmp::Ordering::Greater
+                } else {
+                    std::cmp::Ordering::Equal
                 }
-            };
+            });
 
             if comparison.is_ne() {
                 if orderby_field.order_direction == OrderDirection::ASC {
@@ -151,15 +139,26 @@ fn execute_order_by(fields: &Vec<OrderByFieldOption>, data: &mut [Pod]) -> Resul
     Ok(())
 }
 
-fn execute_where(condition: &Vec<ExpressionElement>, data: &mut Vec<Pod>) -> Result<(), String> {
-    if condition.is_empty() {
+fn execute_where(expression: &Vec<ExpressionElement>, data: &mut Vec<Pod>) -> Result<(), String> {
+    if expression.is_empty() {
         return Ok(());
     }
 
-    let mut stack = Vec::new();
-    let mut eval_stack = Vec::new();
-    let mut bool_stack = Vec::new();
+    // Dry run to return an error if expression is invalid
+    let _ = evaluate_expression(expression, data.first().unwrap())?;
 
+    data.retain(|pod| match evaluate_expression(expression, pod) {
+        Ok(FieldValue::Bool(bool)) => bool,
+        _ => false,
+    });
+
+    Ok(())
+}
+
+fn evaluate_expression(
+    expression: &Vec<ExpressionElement>,
+    data: &Pod,
+) -> Result<FieldValue, String> {
     // Define operator precedence
     let operator_precedence = |op: &Operator| match op {
         Operator::And | Operator::Or => 1,
@@ -177,155 +176,103 @@ fn execute_where(condition: &Vec<ExpressionElement>, data: &mut Vec<Pod>) -> Res
         Operator::Power => 5,
     };
 
-    // TODO: iterate over data array and run evaluation per element. Expression evaluation can be
-    // extracted to a separate function. This can be parallelised.
-    for element in condition {
+    let mut stack: Vec<ExpressionElement> = Vec::new();
+    let mut queue: Vec<FieldValue> = Vec::new();
+
+    for element in expression {
         match element {
-            ExpressionElement::OpenedBracket => {
-                stack.push(ExpressionElement::OpenedBracket);
+            ExpressionElement::OpenedBracket => stack.push(ExpressionElement::OpenedBracket),
+            ExpressionElement::FieldName(field_name) => {
+                queue.push(get_field_value(field_name, data))
             }
-            ExpressionElement::FieldName(_)
-            | ExpressionElement::FieldValue(_)
-            | ExpressionElement::Function(_) => {
-                eval_stack.push(element.clone());
-            }
+            ExpressionElement::FieldValue(field_value) => queue.push(field_value.clone()),
+            ExpressionElement::Function(func) => queue.push(execute_function(func, data)?),
             ExpressionElement::Operator(op) => {
-                // op goes on stack, but if stack has equal or higher priority operator, that one
+                // op goes on stack, but if stack has equal or higher priority operator on top, that one
                 // goes from stack to the "queue"
                 if let Some(ExpressionElement::Operator(last_op)) = stack.last() {
                     if operator_precedence(last_op) >= operator_precedence(op) {
-                        handle_operator_to_queue(
-                            &mut stack,
-                            &mut eval_stack,
-                            &mut bool_stack,
-                            data,
-                        )?;
+                        handle_operator_to_queue(&mut stack, &mut queue)?;
                     }
                 }
                 stack.push(element.clone());
             }
             ExpressionElement::ClosedBracket => {
                 while matches!(stack.last(), Some(ExpressionElement::Operator(_))) {
-                    handle_operator_to_queue(&mut stack, &mut eval_stack, &mut bool_stack, data)?;
+                    handle_operator_to_queue(&mut stack, &mut queue)?;
                 }
                 stack.pop();
             }
         }
     }
     while stack.last().is_some() {
-        handle_operator_to_queue(&mut stack, &mut eval_stack, &mut bool_stack, data)?;
+        handle_operator_to_queue(&mut stack, &mut queue)?;
     }
 
-    if bool_stack.len() != 1 {
+    if queue.len() != 1 {
         return Err(format!(
-            "Expected exactly one element in bool_stack, but found {}!",
-            bool_stack.len()
+            "Expected exactly one element on the queue, but found {:?}!",
+            queue
         ));
     }
 
-    let final_indexes = bool_stack.pop().unwrap();
-    let mut index = 0;
-    data.retain(|_| {
-        let result = final_indexes.contains(&index);
-        index += 1;
-        result
-    });
-
-    Ok(())
+    Ok(queue.pop().unwrap())
 }
 
 fn handle_operator_to_queue(
     stack: &mut Vec<ExpressionElement>,
-    eval_stack: &mut Vec<ExpressionElement>,
-    bool_stack: &mut Vec<HashSet<usize>>,
-    data: &[Pod],
+    queue: &mut Vec<FieldValue>,
 ) -> Result<(), String> {
-    let op;
-    let left;
-    let right;
+    let should_be_operator = stack.pop();
+    if let Some(ExpressionElement::Operator(operator)) = should_be_operator {
+        let right = queue
+            .pop()
+            .ok_or("Expected operand on the queue, but found nothing!")?;
+        let left = queue
+            .pop()
+            .ok_or("Expected operand on the queue, but found nothing!")?;
 
-    if let Some(should_be_operator) = stack.pop() {
-        match should_be_operator {
-            ExpressionElement::Operator(_op) => {
-                op = _op.clone();
-
-                match _op {
-                    Operator::Or | Operator::And => {
-                        let _right = bool_stack
-                            .pop()
-                            .ok_or("Expected left operand on the bool stack, but found nothing!")?;
-                        let _left = bool_stack.pop().ok_or(
-                            "Expected right operand on the bool stack, but found nothing!",
-                        )?;
-                        left = Operand::BoolElement(_left);
-                        right = Operand::BoolElement(_right);
-                    }
-                    _ => {
-                        let _right = eval_stack
-                            .pop()
-                            .ok_or("Expected operand on the eval stack, but found nothing!")?;
-                        let _left = eval_stack
-                            .pop()
-                            .ok_or("Expected operand on the eval stack, but found nothing!")?;
-                        left = Operand::QueueElement(_left);
-                        right = Operand::QueueElement(_right);
-                    }
-                }
-            }
-            _ => {
-                return Err(format!(
-                    "Expected operator, but found: {:?}",
-                    should_be_operator
-                ))
-            }
-        }
+        queue.push(execute_operation(&operator, &left, &right)?);
     } else {
-        return Err("Expected operator on top of the stack, but found nothing!".to_string());
-    }
-
-    match execute_operation(data, &op, &left, &right)? {
-        Operand::BoolElement(set) => {
-            bool_stack.push(set);
-        }
-        Operand::QueueElement(value) => {
-            eval_stack.push(value);
-        }
+        return Err(format!(
+            "Expected operator on top of the stack, but found {:?}!",
+            should_be_operator
+        ));
     }
 
     Ok(())
 }
 
 fn execute_operation(
-    data: &[Pod],
     op: &Operator,
-    left: &Operand,
-    right: &Operand,
-) -> Result<Operand, String> {
+    left: &FieldValue,
+    right: &FieldValue,
+) -> Result<FieldValue, String> {
     match op {
         // get bools, return bool
-        Operator::And => execute_bool_comparison_operation(
-            |a, b| a.intersection(b).copied().collect(),
-            left,
-            right,
-        ),
-        Operator::Or => {
-            execute_bool_comparison_operation(|a, b| a.union(b).copied().collect(), left, right)
-        }
+        Operator::And => match (left, right) {
+            (FieldValue::Bool(left), FieldValue::Bool(right)) => {
+                Ok(FieldValue::Bool(*left && *right))
+            }
+            _ => Err("AND operator expects operands to be bools!".to_string()),
+        },
+        Operator::Or => match (left, right) {
+            (FieldValue::Bool(left), FieldValue::Bool(right)) => {
+                Ok(FieldValue::Bool(*left || *right))
+            }
+            _ => Err("OR operator expects operands to be bools!".to_string()),
+        },
 
         // get values, return bools
-        Operator::Like => {
-            execute_val_comparison_operator(data, left, right, execute_operation_like)
-        }
-        Operator::NotLike => {
-            execute_val_comparison_operator(data, left, right, |a, b| !execute_operation_like(a, b))
-        }
-        Operator::In => execute_val_comparison_operator(data, left, right, |a, b| b.contains(&a)),
-        Operator::Lt => execute_val_comparison_operator(data, left, right, |a, b| a < b),
-        Operator::Lte => execute_val_comparison_operator(data, left, right, |a, b| a <= b),
-        Operator::Gt => execute_val_comparison_operator(data, left, right, |a, b| a > b),
-        Operator::Gte => execute_val_comparison_operator(data, left, right, |a, b| a >= b),
-        Operator::Eq => execute_val_comparison_operator(data, left, right, |a, b| a == b),
-        Operator::Neq => execute_val_comparison_operator(data, left, right, |a, b| a != b),
+        Operator::Like => Ok(FieldValue::Bool(execute_operation_like(left, right))),
+        Operator::NotLike => Ok(FieldValue::Bool(!execute_operation_like(left, right))),
+        Operator::In => Ok(FieldValue::Bool(right.contains(left))),
+        Operator::Lt => Ok(FieldValue::Bool(left < right)),
+        Operator::Lte => Ok(FieldValue::Bool(left <= right)),
+        Operator::Gt => Ok(FieldValue::Bool(left > right)),
+        Operator::Gte => Ok(FieldValue::Bool(left >= right)),
+        Operator::Eq => Ok(FieldValue::Bool(left == right)),
+        Operator::Neq => Ok(FieldValue::Bool(left != right)),
 
         // get values, return values
         // TODO: Handle operator
@@ -338,65 +285,22 @@ fn execute_operation(
     }
 }
 
-fn execute_bool_comparison_operation(
-    op: fn(&HashSet<usize>, &HashSet<usize>) -> HashSet<usize>,
-    left: &Operand,
-    right: &Operand,
-) -> Result<Operand, String> {
-    let Operand::BoolElement(left_set) = left else {
-        return Err("Operation AND expects operands to be BoolElement, LEFT was not!".to_string());
-    };
-    let Operand::BoolElement(right_set) = right else {
-        return Err("Operation AND expects operands to be BoolElement, LEFT was not!".to_string());
-    };
-
-    Ok(Operand::BoolElement(op(left_set, right_set)))
-}
-
-fn execute_val_comparison_operator(
-    data: &[Pod],
-    left: &Operand,
-    right: &Operand,
-    op: fn(FieldValue, FieldValue) -> bool,
-) -> Result<Operand, String> {
-    let Operand::QueueElement(left_el) = left else {
-        return Err("Operation AND expects operands to be BoolElement, LEFT was not!".to_string());
-    };
-    let Operand::QueueElement(right_el) = right else {
-        return Err("Operation AND expects operands to be BoolElement, LEFT was not!".to_string());
-    };
-
-    let mut indexes: HashSet<usize> = HashSet::new();
-    for (index, data_el) in data.iter().enumerate() {
-        let left_val = get_queue_element_value(left_el, data_el)?;
-        let right_val = get_queue_element_value(right_el, data_el)?;
-
-        if match (left_val, right_val) {
-            (Some(a), Some(b)) => op(a, b),
-            _ => false,
-        } {
-            indexes.insert(index);
-        }
-    }
-
-    Ok(Operand::BoolElement(indexes))
-}
-
 /***************************************************************************************************
 *************************************** VALUE getters **********************************************
 ***************************************************************************************************/
-fn get_queue_element_value(
-    operand: &ExpressionElement,
-    data: &Pod,
-) -> Result<Option<FieldValue>, String> {
-    match operand {
-        ExpressionElement::FieldName(field_name) => Ok(get_field_value(field_name, data)),
-        ExpressionElement::FieldValue(field_value) => Ok(Some(field_value.clone())),
-        ExpressionElement::Function(func) => match func.name.to_uppercase().as_str() {
-            "DATEADD" => Ok(Some(execute_function_date_add(func, data)?)),
-            _ => Err(format!("TODO: Implement function execution: {:?}!", func)),
+pub fn get_field_value(field_name: &str, data: &Pod) -> FieldValue {
+    match get_nested_pod(field_name, data) {
+        Some(Pod::Null) => FieldValue::Null,
+        Some(Pod::String(str)) => FieldValue::String(str.clone()),
+        Some(Pod::Float(num)) => FieldValue::Number(num),
+        Some(Pod::Integer(num)) => FieldValue::Number(num as f64),
+        Some(Pod::Boolean(bool)) => FieldValue::Bool(bool),
+        Some(Pod::Array(list)) => pod_array_to_field_value(&list),
+        Some(Pod::Hash(hash)) => match Pod::Hash(hash).deserialize::<serde_json::Value>() {
+            Ok(val) => FieldValue::String(val.to_string()),
+            Err(_) => FieldValue::Null,
         },
-        _ => Err(format!("Unsupported element: {:?}!", operand)),
+        None => FieldValue::Null,
     }
 }
 
@@ -414,22 +318,6 @@ pub fn get_nested_pod(field_name: &str, data: &Pod) -> Option<Pod> {
         }
     }
     Some(current)
-}
-
-pub fn get_field_value(field_name: &str, data: &Pod) -> Option<FieldValue> {
-    match get_nested_pod(field_name, data) {
-        Some(Pod::Null) => None,
-        Some(Pod::String(str)) => Some(FieldValue::String(str.clone())),
-        Some(Pod::Float(num)) => Some(FieldValue::Number(num)),
-        Some(Pod::Integer(num)) => Some(FieldValue::Number(num as f64)),
-        Some(Pod::Boolean(bool)) => Some(FieldValue::Bool(bool)),
-        Some(Pod::Array(list)) => Some(pod_array_to_field_value(&list)),
-        Some(Pod::Hash(hash)) => match Pod::Hash(hash).deserialize::<serde_json::Value>() {
-            Ok(val) => Some(FieldValue::String(val.to_string())),
-            Err(_) => None,
-        },
-        None => None,
-    }
 }
 
 fn pod_array_to_field_value(list: &Vec<Pod>) -> FieldValue {
@@ -451,10 +339,17 @@ fn pod_array_to_field_value(list: &Vec<Pod>) -> FieldValue {
 /***************************************************************************************************
 *************************************** EXECUTE functions ******************************************
 ***************************************************************************************************/
-fn execute_operation_like(a: FieldValue, b: FieldValue) -> bool {
+fn execute_function(func: &Function, data: &Pod) -> Result<FieldValue, String> {
+    match func.name.to_uppercase().as_str() {
+        "DATEADD" => Ok(execute_function_date_add(func, data)?),
+        _ => Err(format!("TODO: Implement function execution: {:?}!", func)),
+    }
+}
+
+fn execute_operation_like(a: &FieldValue, b: &FieldValue) -> bool {
     match (a, b) {
         (FieldValue::String(a_str), FieldValue::String(b_str)) => {
-            Regex::new(&b_str).map_or(false, |re| re.is_match(&a_str))
+            Regex::new(b_str).map_or(false, |re| re.is_match(a_str))
         }
         _ => false,
     }
@@ -482,7 +377,7 @@ fn execute_function_date_add(func: &Function, data: &Pod) -> Result<FieldValue, 
     // SECOND ARGUMENT
     let number = match &func.args[1] {
         FunctionArg::FieldName(field_name) => match get_field_value(field_name, data) {
-            Some(FieldValue::Number(number)) => number,
+            FieldValue::Number(number) => number,
             _ => {
                 return Err(format!(
                     "Function DATEADD expects second argument to be a number, but found: {:?}",
@@ -502,7 +397,7 @@ fn execute_function_date_add(func: &Function, data: &Pod) -> Result<FieldValue, 
     // THIRD ARGUMENT
     let date_str = match &func.args[2] {
         FunctionArg::FieldName(field_name) => match get_field_value(field_name, data) {
-            Some(FieldValue::String(date_str)) => date_str,
+            FieldValue::String(date_str) => date_str,
             _ => {
                 return Err(format!(
                     "Function DATEADD expects third argument to be a date, but found: {:?}",
