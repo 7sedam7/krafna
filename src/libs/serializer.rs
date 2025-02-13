@@ -38,13 +38,7 @@ pub fn pods_to_tsv(field_names: Vec<String>, pods: Vec<Pod>) -> String {
         .map(|pod| {
             field_names
                 .iter()
-                .map(|field_name| {
-                    if let Some(field_value) = get_field_value(field_name, &pod) {
-                        field_value.to_string()
-                    } else {
-                        "".to_string()
-                    }
-                })
+                .map(|field_name| get_field_value(field_name, &pod).to_string())
                 .collect::<Vec<String>>()
                 .join("\t")
         })
