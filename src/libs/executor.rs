@@ -190,21 +190,21 @@ fn evaluate_expression(
                 // goes from stack to the "queue"
                 if let Some(ExpressionElement::Operator(last_op)) = stack.last() {
                     if operator_precedence(last_op) >= operator_precedence(op) {
-                        handle_operator_to_queue(&mut stack, &mut queue)?;
+                        evaluate_stack_operator(&mut stack, &mut queue)?;
                     }
                 }
                 stack.push(element.clone());
             }
             ExpressionElement::ClosedBracket => {
-                while matches!(stack.last(), Some(ExpressionElement::Operator(_))) {
-                    handle_operator_to_queue(&mut stack, &mut queue)?;
+                while !matches!(stack.last(), Some(ExpressionElement::OpenedBracket)) {
+                    evaluate_stack_operator(&mut stack, &mut queue)?;
                 }
                 stack.pop();
             }
         }
     }
     while stack.last().is_some() {
-        handle_operator_to_queue(&mut stack, &mut queue)?;
+        evaluate_stack_operator(&mut stack, &mut queue)?;
     }
 
     if queue.len() != 1 {
@@ -217,7 +217,7 @@ fn evaluate_expression(
     Ok(queue.pop().unwrap())
 }
 
-fn handle_operator_to_queue(
+fn evaluate_stack_operator(
     stack: &mut Vec<ExpressionElement>,
     queue: &mut Vec<FieldValue>,
 ) -> Result<(), String> {
@@ -1216,5 +1216,70 @@ mod tests {
         assert_eq!(pod1, data[0], "Result should have pod1");
         assert_eq!(pod4, data[1], "Result should have pod4");
         assert_eq!(pod5, data[2], "Result should have pod5");
+    }
+
+    #[test]
+    fn test_evaluate_stack_operator_empty() {
+        let mut stack = vec![];
+        let mut queue = vec![];
+
+        assert!(evaluate_stack_operator(&mut stack, &mut queue).is_err());
+        assert_eq!(0, stack.len(), "Stack should stay empty");
+        assert_eq!(0, queue.len(), "Queue should stay empty");
+    }
+
+    #[test]
+    fn test_evaluate_stack_operator_no_operator() {
+        let mut stack = vec![ExpressionElement::OpenedBracket];
+        let mut queue = vec![FieldValue::Number(1.0), FieldValue::Number(2.0)];
+
+        assert!(evaluate_stack_operator(&mut stack, &mut queue).is_err());
+        assert_eq!(0, stack.len(), "Stack should stay empty");
+        assert_eq!(2, queue.len(), "Queue should have 2 elements");
+    }
+
+    #[test]
+    fn test_evaluate_stack_operator_with_operator() {
+        let mut stack = vec![
+            ExpressionElement::OpenedBracket,
+            ExpressionElement::Operator(Operator::Eq),
+        ];
+        let mut queue = vec![FieldValue::Number(1.0), FieldValue::Number(2.0)];
+
+        assert!(evaluate_stack_operator(&mut stack, &mut queue).is_ok());
+
+        assert_eq!(1, stack.len(), "Stack should have 1 element");
+        assert_eq!(
+            ExpressionElement::OpenedBracket,
+            stack.last().unwrap().clone(),
+            "Top of the stack should be ("
+        );
+
+        assert_eq!(1, queue.len(), "Queue should have 2 elements");
+        assert_eq!(
+            FieldValue::Bool(false),
+            queue.last().unwrap().clone(),
+            "Top of the queue should be false"
+        );
+    }
+
+    #[test]
+    fn test_evaluate_stack_operator_no_operands() {
+        let mut stack = vec![ExpressionElement::Operator(Operator::Eq)];
+        let mut queue = vec![];
+
+        assert!(evaluate_stack_operator(&mut stack, &mut queue).is_err());
+        assert_eq!(0, stack.len(), "Stack should stay empty");
+        assert_eq!(0, queue.len(), "Queue should be empty");
+    }
+
+    #[test]
+    fn test_evaluate_stack_operator_one_operand() {
+        let mut stack = vec![ExpressionElement::Operator(Operator::Eq)];
+        let mut queue = vec![FieldValue::Number(1.0)];
+
+        assert!(evaluate_stack_operator(&mut stack, &mut queue).is_err());
+        assert_eq!(0, stack.len(), "Stack should stay empty");
+        assert_eq!(0, queue.len(), "Queue should be empty");
     }
 }
