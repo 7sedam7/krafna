@@ -286,6 +286,16 @@ fn execute_operation(
     }
 }
 
+fn execute_operation_like(a: &FieldValue, b: &FieldValue) -> bool {
+    match (a, b) {
+        (FieldValue::String(a_str), FieldValue::String(b_str)) => {
+            // TODO: consider DDosing of this
+            Regex::new(b_str).map_or(false, |re| re.is_match(a_str))
+        }
+        _ => false,
+    }
+}
+
 /***************************************************************************************************
 *************************************** VALUE getters **********************************************
 ***************************************************************************************************/
@@ -344,16 +354,6 @@ fn execute_function(func: &Function, data: &Pod) -> Result<FieldValue, String> {
         "DATEADD" => Ok(execute_function_date_add(func, data)?),
         "DATE" => Ok(execute_function_date(func, data)?),
         _ => Err(format!("TODO: Implement function execution: {:?}!", func)),
-    }
-}
-
-fn execute_operation_like(a: &FieldValue, b: &FieldValue) -> bool {
-    match (a, b) {
-        (FieldValue::String(a_str), FieldValue::String(b_str)) => {
-            // TODO: consider DDosing of this
-            Regex::new(b_str).map_or(false, |re| re.is_match(a_str))
-        }
-        _ => false,
     }
 }
 
@@ -594,6 +594,9 @@ mod tests {
     use super::*;
     use gray_matter::Pod;
 
+    /***************************************************************************************************
+     * TESTS for execute_select
+     * *************************************************************************************************/
     #[test]
     fn test_execute_select_retains_specified_field() {
         // Create sample Pod data with 3 fields
@@ -712,6 +715,9 @@ mod tests {
         }
     }
 
+    /***************************************************************************************************
+     * TESTS for execute_order_by
+     * *************************************************************************************************/
     #[test]
     fn test_execute_order_by_null_values() {
         // Create sample Pod data with 3 fields
@@ -936,6 +942,9 @@ mod tests {
         assert_eq!(pod1, data[2], "Second element should be pod1");
     }
 
+    /***************************************************************************************************
+     * TESTS for execute_where
+     * *************************************************************************************************/
     #[test]
     fn test_execute_where_equals() {
         // Create sample Pod data with 3 fields
@@ -1218,6 +1227,9 @@ mod tests {
         assert_eq!(pod5, data[2], "Result should have pod5");
     }
 
+    /***************************************************************************************************
+     * TESTS for evaluate_stack_operator
+     * *************************************************************************************************/
     #[test]
     fn test_evaluate_stack_operator_empty() {
         let mut stack = vec![];
@@ -1282,4 +1294,406 @@ mod tests {
         assert_eq!(0, stack.len(), "Stack should stay empty");
         assert_eq!(0, queue.len(), "Queue should be empty");
     }
+
+    /***************************************************************************************************
+     * TESTS for execute_operation
+     * *************************************************************************************************/
+    #[test]
+    fn test_execute_operation_and() {
+        assert_eq!(
+            Ok(FieldValue::Bool(true)),
+            execute_operation(
+                &Operator::And,
+                &FieldValue::Bool(true),
+                &FieldValue::Bool(true)
+            )
+        );
+
+        assert_eq!(
+            Ok(FieldValue::Bool(false)),
+            execute_operation(
+                &Operator::And,
+                &FieldValue::Bool(true),
+                &FieldValue::Bool(false)
+            )
+        );
+
+        assert_eq!(
+            Ok(FieldValue::Bool(false)),
+            execute_operation(
+                &Operator::And,
+                &FieldValue::Bool(false),
+                &FieldValue::Bool(true)
+            )
+        );
+
+        assert_eq!(
+            Ok(FieldValue::Bool(false)),
+            execute_operation(
+                &Operator::And,
+                &FieldValue::Bool(false),
+                &FieldValue::Bool(false)
+            )
+        );
+    }
+
+    #[test]
+    fn test_execute_operation_or() {
+        assert_eq!(
+            Ok(FieldValue::Bool(true)),
+            execute_operation(
+                &Operator::Or,
+                &FieldValue::Bool(true),
+                &FieldValue::Bool(true)
+            )
+        );
+
+        assert_eq!(
+            Ok(FieldValue::Bool(true)),
+            execute_operation(
+                &Operator::Or,
+                &FieldValue::Bool(true),
+                &FieldValue::Bool(false)
+            )
+        );
+
+        assert_eq!(
+            Ok(FieldValue::Bool(true)),
+            execute_operation(
+                &Operator::Or,
+                &FieldValue::Bool(false),
+                &FieldValue::Bool(true)
+            )
+        );
+
+        assert_eq!(
+            Ok(FieldValue::Bool(false)),
+            execute_operation(
+                &Operator::Or,
+                &FieldValue::Bool(false),
+                &FieldValue::Bool(false)
+            )
+        );
+    }
+
+    #[test]
+    fn test_execute_operation_like() {
+        assert_eq!(
+            Ok(FieldValue::Bool(true)),
+            execute_operation(
+                &Operator::Like,
+                &FieldValue::String("value".to_string()),
+                &FieldValue::String("val.*".to_string())
+            )
+        );
+    }
+
+    #[test]
+    fn test_execute_operation_not_like() {
+        assert_eq!(
+            Ok(FieldValue::Bool(false)),
+            execute_operation(
+                &Operator::NotLike,
+                &FieldValue::String("value".to_string()),
+                &FieldValue::String("val.*".to_string())
+            )
+        );
+    }
+
+    #[test]
+    fn test_execute_operation_in_list() {
+        assert_eq!(
+            Ok(FieldValue::Bool(true)),
+            execute_operation(
+                &Operator::In,
+                &FieldValue::String("value".to_string()),
+                &FieldValue::List(vec![
+                    FieldValue::Number(1.0),
+                    FieldValue::String("value".to_string())
+                ])
+            )
+        );
+
+        assert_eq!(
+            Ok(FieldValue::Bool(false)),
+            execute_operation(
+                &Operator::In,
+                &FieldValue::String("value".to_string()),
+                &FieldValue::List(vec![
+                    FieldValue::Number(1.0),
+                    FieldValue::String("valu".to_string())
+                ])
+            )
+        );
+    }
+
+    #[test]
+    fn test_execute_operation_in_str() {
+        assert_eq!(
+            Ok(FieldValue::Bool(true)),
+            execute_operation(
+                &Operator::In,
+                &FieldValue::String("lu".to_string()),
+                &FieldValue::String("value".to_string()),
+            )
+        );
+
+        assert_eq!(
+            Ok(FieldValue::Bool(false)),
+            execute_operation(
+                &Operator::In,
+                &FieldValue::String("ul".to_string()),
+                &FieldValue::String("value".to_string()),
+            )
+        );
+    }
+
+    #[test]
+    fn test_execute_operation_lt() {
+        let smaller = [
+            FieldValue::Number(1.0),
+            FieldValue::String("aaa".to_string()),
+            FieldValue::Bool(false),
+        ];
+        let greater = [
+            FieldValue::Number(2.0),
+            FieldValue::String("aab".to_string()),
+            FieldValue::Bool(true),
+        ];
+
+        for (small, large) in smaller.iter().zip(greater.iter()) {
+            assert_eq!(
+                Ok(FieldValue::Bool(true)),
+                execute_operation(&Operator::Lt, small, large,)
+            );
+
+            assert_eq!(
+                Ok(FieldValue::Bool(false)),
+                execute_operation(&Operator::Lt, large, small,)
+            );
+
+            assert_eq!(
+                Ok(FieldValue::Bool(false)),
+                execute_operation(&Operator::Lt, small, small,)
+            );
+        }
+    }
+
+    #[test]
+    fn test_execute_operation_lte() {
+        let smaller = [
+            FieldValue::Number(1.0),
+            FieldValue::String("aaa".to_string()),
+            FieldValue::Bool(false),
+        ];
+        let greater = [
+            FieldValue::Number(2.0),
+            FieldValue::String("aab".to_string()),
+            FieldValue::Bool(true),
+        ];
+
+        for (small, large) in smaller.iter().zip(greater.iter()) {
+            assert_eq!(
+                Ok(FieldValue::Bool(true)),
+                execute_operation(&Operator::Lte, small, large)
+            );
+
+            assert_eq!(
+                Ok(FieldValue::Bool(false)),
+                execute_operation(&Operator::Lte, large, small)
+            );
+
+            assert_eq!(
+                Ok(FieldValue::Bool(true)),
+                execute_operation(&Operator::Lte, small, small)
+            );
+        }
+    }
+
+    #[test]
+    fn test_execute_operation_gt() {
+        let smaller = [
+            FieldValue::Number(1.0),
+            FieldValue::String("aaa".to_string()),
+            FieldValue::Bool(false),
+        ];
+        let greater = [
+            FieldValue::Number(2.0),
+            FieldValue::String("aab".to_string()),
+            FieldValue::Bool(true),
+        ];
+
+        for (small, large) in smaller.iter().zip(greater.iter()) {
+            assert_eq!(
+                Ok(FieldValue::Bool(true)),
+                execute_operation(&Operator::Gt, large, small,)
+            );
+
+            assert_eq!(
+                Ok(FieldValue::Bool(false)),
+                execute_operation(&Operator::Gt, small, large,)
+            );
+
+            assert_eq!(
+                Ok(FieldValue::Bool(false)),
+                execute_operation(&Operator::Gt, small, small,)
+            );
+        }
+    }
+
+    #[test]
+    fn test_execute_operation_gte() {
+        let smaller = [
+            FieldValue::Number(1.0),
+            FieldValue::String("aaa".to_string()),
+            FieldValue::Bool(false),
+        ];
+        let greater = [
+            FieldValue::Number(2.0),
+            FieldValue::String("aab".to_string()),
+            FieldValue::Bool(true),
+        ];
+
+        for (small, large) in smaller.iter().zip(greater.iter()) {
+            assert_eq!(
+                Ok(FieldValue::Bool(true)),
+                execute_operation(&Operator::Gte, large, small,)
+            );
+
+            assert_eq!(
+                Ok(FieldValue::Bool(false)),
+                execute_operation(&Operator::Gte, small, large,)
+            );
+
+            assert_eq!(
+                Ok(FieldValue::Bool(true)),
+                execute_operation(&Operator::Gte, small, small,)
+            );
+        }
+    }
+
+    #[test]
+    fn test_execute_operation_eq() {
+        let elements = [
+            FieldValue::Number(1.0),
+            FieldValue::String("value".to_string()),
+            FieldValue::Bool(true),
+        ];
+        let different_elements = [
+            FieldValue::Number(2.0),
+            FieldValue::String("different value".to_string()),
+            FieldValue::Bool(false),
+        ];
+
+        for (el, diff_el) in elements.iter().zip(different_elements.iter()) {
+            assert_eq!(
+                Ok(FieldValue::Bool(true)),
+                execute_operation(&Operator::Eq, &el.clone(), &el.clone())
+            );
+
+            assert_eq!(
+                Ok(FieldValue::Bool(false)),
+                execute_operation(&Operator::Eq, &el.clone(), diff_el)
+            );
+        }
+    }
+
+    #[test]
+    fn test_execute_operation_eq_null() {
+        assert_eq!(
+            Ok(FieldValue::Bool(true)),
+            execute_operation(&Operator::Eq, &FieldValue::Null, &FieldValue::Null)
+        );
+
+        assert_eq!(
+            Ok(FieldValue::Bool(false)),
+            execute_operation(&Operator::Eq, &FieldValue::Null, &FieldValue::Number(1.0))
+        );
+
+        assert_eq!(
+            Ok(FieldValue::Bool(false)),
+            execute_operation(&Operator::Eq, &FieldValue::Number(1.0), &FieldValue::Null)
+        );
+    }
+
+    #[test]
+    fn test_execute_operation_eq_list() {
+        assert_eq!(
+            Ok(FieldValue::Bool(true)),
+            execute_operation(
+                &Operator::Eq,
+                &FieldValue::List(vec![
+                    FieldValue::Number(1.0),
+                    FieldValue::String("test".to_string())
+                ]),
+                &FieldValue::List(vec![
+                    FieldValue::Number(1.0),
+                    FieldValue::String("test".to_string())
+                ]),
+            )
+        );
+
+        assert_eq!(
+            Ok(FieldValue::Bool(false)),
+            execute_operation(
+                &Operator::Eq,
+                &FieldValue::List(vec![
+                    FieldValue::Number(1.0),
+                    FieldValue::String("test".to_string())
+                ]),
+                &FieldValue::List(vec![
+                    FieldValue::Number(2.0),
+                    FieldValue::String("test".to_string())
+                ]),
+            )
+        );
+
+        assert_eq!(
+            Ok(FieldValue::Bool(false)),
+            execute_operation(
+                &Operator::Eq,
+                &FieldValue::List(vec![
+                    FieldValue::Number(1.0),
+                    FieldValue::String("test".to_string())
+                ]),
+                &FieldValue::List(vec![
+                    FieldValue::Number(1.0),
+                    FieldValue::String("bla".to_string())
+                ]),
+            )
+        );
+    }
+
+    #[test]
+    fn test_execute_operation_neq() {
+        let elements = [
+            FieldValue::Number(1.0),
+            FieldValue::String("value".to_string()),
+            FieldValue::Bool(true),
+        ];
+        let different_elements = [
+            FieldValue::Number(2.0),
+            FieldValue::String("different value".to_string()),
+            FieldValue::Bool(false),
+        ];
+
+        for (el, diff_el) in elements.iter().zip(different_elements.iter()) {
+            assert_eq!(
+                Ok(FieldValue::Bool(false)),
+                execute_operation(&Operator::Neq, &el.clone(), &el.clone())
+            );
+
+            assert_eq!(
+                Ok(FieldValue::Bool(true)),
+                execute_operation(&Operator::Neq, &el.clone(), diff_el)
+            );
+        }
+    }
+
+    // Operator::Plus => Err("PLUS operator not implemented!".to_string()),
+    // Operator::Minus => Err("MINUS operator not implemented!".to_string()),
+    // Operator::Multiply => Err("MULTIPLY operator not implemented!".to_string()),
+    // Operator::Divide => Err("DIVIDE operator not implemented!".to_string()),
+    // Operator::Power => Err("POWER operator not implemented!".to_string()),
+    // Operator::FloorDivide => Err("FLOOR DIVIDE operator not imlemented!".to_string()),
 }
