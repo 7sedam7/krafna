@@ -148,6 +148,73 @@ impl FieldValue {
             _ => None,
         }
     }
+
+    pub fn add(&self, other: &Self) -> Result<Self, String> {
+        match (self, other) {
+            (FieldValue::List(list), FieldValue::List(other_list)) => {
+                let mut new_list = list.clone();
+                new_list.extend(other_list.iter().cloned());
+                Ok(FieldValue::List(new_list))
+            }
+            (FieldValue::String(s), FieldValue::String(other_s)) => {
+                Ok(FieldValue::String(format!("{}{}", s, other_s)))
+            }
+            (FieldValue::Number(n), FieldValue::Number(other_n)) => {
+                Ok(FieldValue::Number(n + other_n))
+            }
+            _ => Err("Can't add these types".to_string()),
+        }
+    }
+
+    pub fn subtract(&self, other: &Self) -> Result<Self, String> {
+        match (self, other) {
+            (FieldValue::List(list), FieldValue::List(other_list)) => {
+                let mut new_list = list.clone();
+                new_list.retain(|item| !other_list.contains(item));
+                Ok(FieldValue::List(new_list))
+            }
+            (FieldValue::Number(n), FieldValue::Number(other_n)) => {
+                Ok(FieldValue::Number(n - other_n))
+            }
+            _ => Err("Can't subtract these types".to_string()),
+        }
+    }
+
+    pub fn multiply(&self, other: &Self) -> Result<Self, String> {
+        match (self, other) {
+            (FieldValue::Number(n), FieldValue::Number(other_n)) => {
+                Ok(FieldValue::Number(n * other_n))
+            }
+            _ => Err("Can't multiply these types".to_string()),
+        }
+    }
+
+    pub fn divide(&self, other: &Self) -> Result<Self, String> {
+        match (self, other) {
+            (FieldValue::Number(n), FieldValue::Number(other_n)) => {
+                Ok(FieldValue::Number(n / other_n))
+            }
+            _ => Err("Can't divide these types".to_string()),
+        }
+    }
+
+    pub fn power(&self, other: &Self) -> Result<Self, String> {
+        match (self, other) {
+            (FieldValue::Number(n), FieldValue::Number(other_n)) => {
+                Ok(FieldValue::Number(n.powf(*other_n)))
+            }
+            _ => Err("Can't power these types".to_string()),
+        }
+    }
+
+    pub fn floor_divide(&self, other: &Self) -> Result<Self, String> {
+        match (self, other) {
+            (FieldValue::Number(n), FieldValue::Number(other_n)) => {
+                Ok(FieldValue::Number((n / other_n).floor()))
+            }
+            _ => Err("Can't floor divide these types".to_string()),
+        }
+    }
 }
 
 impl Display for FieldValue {

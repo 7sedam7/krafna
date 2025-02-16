@@ -160,7 +160,8 @@ fn evaluate_expression(
 ) -> Result<FieldValue, String> {
     // Define operator precedence
     let operator_precedence = |op: &Operator| match op {
-        Operator::And | Operator::Or => 1,
+        Operator::Or => 0,
+        Operator::And => 1,
         Operator::In
         | Operator::Like
         | Operator::NotLike
@@ -189,9 +190,11 @@ fn evaluate_expression(
             ExpressionElement::Operator(op) => {
                 // op goes on stack, but if stack has equal or higher priority operator on top, that one
                 // goes from stack to the "queue"
-                if let Some(ExpressionElement::Operator(last_op)) = stack.last() {
+                while let Some(ExpressionElement::Operator(last_op)) = stack.last() {
                     if operator_precedence(last_op) >= operator_precedence(op) {
                         evaluate_stack_operator(&mut stack, &mut queue)?;
+                    } else {
+                        break;
                     }
                 }
                 stack.push(element.clone());
@@ -277,13 +280,12 @@ fn execute_operation(
         Operator::Neq => Ok(FieldValue::Bool(left != right)),
 
         // get values, return values
-        // TODO: Handle operator
-        Operator::Plus => Err("PLUS operator not implemented!".to_string()),
-        Operator::Minus => Err("MINUS operator not implemented!".to_string()),
-        Operator::Multiply => Err("MULTIPLY operator not implemented!".to_string()),
-        Operator::Divide => Err("DIVIDE operator not implemented!".to_string()),
-        Operator::Power => Err("POWER operator not implemented!".to_string()),
-        Operator::FloorDivide => Err("FLOOR DIVIDE operator not imlemented!".to_string()),
+        Operator::Plus => left.add(right),
+        Operator::Minus => left.subtract(right),
+        Operator::Multiply => left.multiply(right),
+        Operator::Divide => left.divide(right),
+        Operator::Power => left.power(right),
+        Operator::FloorDivide => left.floor_divide(right),
     }
 }
 
@@ -1143,62 +1145,39 @@ mod tests {
         let value4 = 4.0;
 
         let field1 = "field1".to_string();
-        let field1_value1 = value4;
-        let field1_value2 = value1;
-        let field1_value3 = value1;
-        let field1_value4 = value1;
-        let field1_value5 = value1;
-
         let field2 = "field2".to_string();
-        let field2_value1 = value2;
-        let field2_value2 = value2;
-        let field2_value3 = value1;
-        let field2_value4 = value1;
-        let field2_value5 = value1;
-
         let field3 = "field3".to_string();
-        let field3_value1 = value3;
-        let field3_value2 = value2;
-        let field3_value3 = value3;
-        let field3_value4 = value2;
-        let field3_value5 = value3;
-
         let field4 = "field4".to_string();
-        let field4_value1 = value4;
-        let field4_value2 = value3;
-        let field4_value3 = value4;
-        let field4_value4 = value4;
-        let field4_value5 = value3;
 
         let mut pod1 = Pod::new_hash();
-        let _ = pod1.insert(field1.clone(), Pod::Float(field1_value1));
-        let _ = pod1.insert(field2.clone(), Pod::Float(field2_value1));
-        let _ = pod1.insert(field3.clone(), Pod::Float(field3_value1));
-        let _ = pod1.insert(field4.clone(), Pod::Float(field4_value1));
+        let _ = pod1.insert(field1.clone(), Pod::Float(value4));
+        let _ = pod1.insert(field2.clone(), Pod::Float(value2));
+        let _ = pod1.insert(field3.clone(), Pod::Float(value3));
+        let _ = pod1.insert(field4.clone(), Pod::Float(value4));
 
         let mut pod2 = Pod::new_hash();
-        let _ = pod2.insert(field1.clone(), Pod::Float(field1_value2));
-        let _ = pod2.insert(field2.clone(), Pod::Float(field2_value2));
-        let _ = pod2.insert(field3.clone(), Pod::Float(field3_value2));
-        let _ = pod2.insert(field4.clone(), Pod::Float(field4_value2));
+        let _ = pod2.insert(field1.clone(), Pod::Float(value1));
+        let _ = pod2.insert(field2.clone(), Pod::Float(value2));
+        let _ = pod2.insert(field3.clone(), Pod::Float(value2));
+        let _ = pod2.insert(field4.clone(), Pod::Float(value3));
 
         let mut pod3 = Pod::new_hash();
-        let _ = pod3.insert(field1.clone(), Pod::Float(field1_value3));
-        let _ = pod3.insert(field2.clone(), Pod::Float(field2_value3));
-        let _ = pod3.insert(field3.clone(), Pod::Float(field3_value3));
-        let _ = pod3.insert(field4.clone(), Pod::Float(field4_value3));
+        let _ = pod3.insert(field1.clone(), Pod::Float(value1));
+        let _ = pod3.insert(field2.clone(), Pod::Float(value1));
+        let _ = pod3.insert(field3.clone(), Pod::Float(value3));
+        let _ = pod3.insert(field4.clone(), Pod::Float(value4));
 
         let mut pod4 = Pod::new_hash();
-        let _ = pod4.insert(field1.clone(), Pod::Float(field1_value4));
-        let _ = pod4.insert(field2.clone(), Pod::Float(field2_value4));
-        let _ = pod4.insert(field3.clone(), Pod::Float(field3_value4));
-        let _ = pod4.insert(field4.clone(), Pod::Float(field4_value4));
+        let _ = pod4.insert(field1.clone(), Pod::Float(value1));
+        let _ = pod4.insert(field2.clone(), Pod::Float(value1));
+        let _ = pod4.insert(field3.clone(), Pod::Float(value2));
+        let _ = pod4.insert(field4.clone(), Pod::Float(value4));
 
         let mut pod5 = Pod::new_hash();
-        let _ = pod5.insert(field1.clone(), Pod::Float(field1_value5));
-        let _ = pod5.insert(field2.clone(), Pod::Float(field2_value5));
-        let _ = pod5.insert(field3.clone(), Pod::Float(field3_value5));
-        let _ = pod5.insert(field4.clone(), Pod::Float(field4_value5));
+        let _ = pod5.insert(field1.clone(), Pod::Float(value1));
+        let _ = pod5.insert(field2.clone(), Pod::Float(value1));
+        let _ = pod5.insert(field3.clone(), Pod::Float(value3));
+        let _ = pod5.insert(field4.clone(), Pod::Float(value3));
 
         let mut data = vec![
             pod1.clone(),
@@ -1241,6 +1220,28 @@ mod tests {
         assert_eq!(pod1, data[0], "Result should have pod1");
         assert_eq!(pod4, data[1], "Result should have pod4");
         assert_eq!(pod5, data[2], "Result should have pod5");
+    }
+
+    /***************************************************************************************************
+     * TESTS for evaluate_expression
+     * *************************************************************************************************/
+    #[test]
+    fn test_evaluate_expression() {
+        let expression = vec![
+            ExpressionElement::FieldValue(FieldValue::Number(1.0)),
+            ExpressionElement::Operator(Operator::Plus),
+            ExpressionElement::FieldValue(FieldValue::Number(2.0)),
+            ExpressionElement::Operator(Operator::Multiply),
+            ExpressionElement::FieldValue(FieldValue::Number(3.0)),
+            ExpressionElement::Operator(Operator::Eq),
+            ExpressionElement::FieldValue(FieldValue::Number(7.0)),
+        ];
+        let pod = Pod::new_hash();
+
+        assert_eq!(
+            Ok(FieldValue::Bool(true)),
+            evaluate_expression(&expression, &pod)
+        );
     }
 
     /***************************************************************************************************
@@ -1706,12 +1707,200 @@ mod tests {
         }
     }
 
-    // Operator::Plus => Err("PLUS operator not implemented!".to_string()),
-    // Operator::Minus => Err("MINUS operator not implemented!".to_string()),
-    // Operator::Multiply => Err("MULTIPLY operator not implemented!".to_string()),
-    // Operator::Divide => Err("DIVIDE operator not implemented!".to_string()),
-    // Operator::Power => Err("POWER operator not implemented!".to_string()),
-    // Operator::FloorDivide => Err("FLOOR DIVIDE operator not imlemented!".to_string()),
+    #[test]
+    fn test_execute_operation_plus() {
+        let elements = [
+            FieldValue::Number(1.0),
+            FieldValue::String("value".to_string()),
+            FieldValue::List(vec![
+                FieldValue::Number(1.0),
+                FieldValue::String("value".to_string()),
+            ]),
+        ];
+        let different_elements = [
+            FieldValue::Number(2.0),
+            FieldValue::String("different value".to_string()),
+            FieldValue::List(vec![
+                FieldValue::Number(2.0),
+                FieldValue::String("different value".to_string()),
+            ]),
+        ];
+        let results = [
+            FieldValue::Number(3.0),
+            FieldValue::String("valuedifferent value".to_string()),
+            FieldValue::List(vec![
+                FieldValue::Number(1.0),
+                FieldValue::String("value".to_string()),
+                FieldValue::Number(2.0),
+                FieldValue::String("different value".to_string()),
+            ]),
+        ];
+
+        for ((el, diff_el), res) in elements
+            .iter()
+            .zip(different_elements.iter())
+            .zip(results.iter())
+        {
+            assert_eq!(
+                Ok(res.clone()),
+                execute_operation(&Operator::Plus, &el.clone(), diff_el)
+            );
+        }
+
+        assert!(execute_operation(
+            &Operator::Plus,
+            &FieldValue::Bool(true),
+            &FieldValue::Bool(false)
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn test_execute_operation_minus() {
+        let elements = [
+            FieldValue::Number(1.0),
+            FieldValue::List(vec![
+                FieldValue::Number(1.0),
+                FieldValue::String("value".to_string()),
+            ]),
+        ];
+        let different_elements = [
+            FieldValue::Number(2.0),
+            FieldValue::List(vec![
+                FieldValue::Number(2.0),
+                FieldValue::String("value".to_string()),
+            ]),
+        ];
+        let results = [
+            FieldValue::Number(-1.0),
+            FieldValue::List(vec![FieldValue::Number(1.0)]),
+        ];
+
+        for ((el, diff_el), res) in elements
+            .iter()
+            .zip(different_elements.iter())
+            .zip(results.iter())
+        {
+            assert_eq!(
+                Ok(res.clone()),
+                execute_operation(&Operator::Minus, &el.clone(), diff_el)
+            );
+        }
+
+        assert!(execute_operation(
+            &Operator::Minus,
+            &FieldValue::Bool(true),
+            &FieldValue::Bool(false)
+        )
+        .is_err());
+
+        assert!(execute_operation(
+            &Operator::Minus,
+            &FieldValue::String("value".to_string()),
+            &FieldValue::String("value".to_string()),
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn test_execute_operation_multiply() {
+        assert_eq!(
+            Ok(FieldValue::Number(2.0)),
+            execute_operation(
+                &Operator::Multiply,
+                &FieldValue::Number(1.0),
+                &FieldValue::Number(2.0)
+            )
+        );
+
+        let elements = [
+            FieldValue::String("value".to_string()),
+            FieldValue::Bool(true),
+            FieldValue::List(vec![
+                FieldValue::Number(1.0),
+                FieldValue::String("value".to_string()),
+            ]),
+        ];
+
+        for el in elements.iter() {
+            assert!(execute_operation(&Operator::Multiply, &el.clone(), &el.clone()).is_err());
+        }
+    }
+
+    #[test]
+    fn test_execute_operation_divide() {
+        assert_eq!(
+            Ok(FieldValue::Number(2.5)),
+            execute_operation(
+                &Operator::Divide,
+                &FieldValue::Number(5.0),
+                &FieldValue::Number(2.0)
+            )
+        );
+
+        let elements = [
+            FieldValue::String("value".to_string()),
+            FieldValue::Bool(true),
+            FieldValue::List(vec![
+                FieldValue::Number(1.0),
+                FieldValue::String("value".to_string()),
+            ]),
+        ];
+
+        for el in elements.iter() {
+            assert!(execute_operation(&Operator::Divide, &el.clone(), &el.clone()).is_err());
+        }
+    }
+
+    #[test]
+    fn test_execute_operation_power() {
+        assert_eq!(
+            Ok(FieldValue::Number(16.0)),
+            execute_operation(
+                &Operator::Power,
+                &FieldValue::Number(4.0),
+                &FieldValue::Number(2.0)
+            )
+        );
+
+        let elements = [
+            FieldValue::String("value".to_string()),
+            FieldValue::Bool(true),
+            FieldValue::List(vec![
+                FieldValue::Number(1.0),
+                FieldValue::String("value".to_string()),
+            ]),
+        ];
+
+        for el in elements.iter() {
+            assert!(execute_operation(&Operator::Power, &el.clone(), &el.clone()).is_err());
+        }
+    }
+
+    #[test]
+    fn test_execute_operation_floor_divide() {
+        assert_eq!(
+            Ok(FieldValue::Number(2.0)),
+            execute_operation(
+                &Operator::FloorDivide,
+                &FieldValue::Number(5.0),
+                &FieldValue::Number(2.0)
+            )
+        );
+
+        let elements = [
+            FieldValue::String("value".to_string()),
+            FieldValue::Bool(true),
+            FieldValue::List(vec![
+                FieldValue::Number(1.0),
+                FieldValue::String("value".to_string()),
+            ]),
+        ];
+
+        for el in elements.iter() {
+            assert!(execute_operation(&Operator::FloorDivide, &el.clone(), &el.clone()).is_err());
+        }
+    }
 
     /***************************************************************************************************
      * TESTS for get_field_value
