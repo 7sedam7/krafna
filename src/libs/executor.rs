@@ -1719,7 +1719,7 @@ mod tests {
     #[test]
     fn test_get_field_value() {
         let mut pod = Pod::new_hash();
-        let key: String = "a".to_string().into();
+        let key: String = "a".to_string();
         let value = 1;
         let _ = pod.insert(key.clone(), value);
 
