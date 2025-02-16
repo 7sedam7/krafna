@@ -366,16 +366,25 @@ fn execute_function(func: &Function, data: &Pod) -> Result<FieldValue, String> {
 
 const DATE_FORMAT: &str = "%Y-%m-%dT%H:%M:%S";
 fn execute_function_date_add(func: &Function, data: &Pod) -> Result<FieldValue, String> {
-    if func.args.len() != 3 {
+    if func.args.len() != 3 && func.args.len() != 4 {
         return Err(format!(
-            "Function DATEADD expects 3 arguments, but found {}!",
+            "Function DATEADD expects 3 or 4 arguments, but found {}!",
             func.args.len()
         ));
     }
 
     // FIRST ARGUMENT
-    let interval = match &func.args[0] {
-        FunctionArg::FieldName(interval) => interval,
+    let interval: String = match &func.args[0] {
+        FunctionArg::FieldName(field_name) => match get_field_value(field_name, data) {
+            FieldValue::String(interval) => interval,
+            _ => {
+                return Err(format!(
+                    "Function DATEADD expects first argument to be a interval, but found: {:?}",
+                    func.args[0]
+                ))
+            }
+        },
+        FunctionArg::FieldValue(FieldValue::String(interval)) => interval.clone(),
         _ => {
             return Err(format!(
                 "Function DATEADD expects first argument to be a interval, but found: {:?}",
@@ -1066,7 +1075,7 @@ mod tests {
                     ExpressionElement::Function(Function {
                         name: "DATEADD".to_string(),
                         args: vec![
-                            FunctionArg::FieldName("YEAR".to_string()),
+                            FunctionArg::FieldValue(FieldValue::String("YEAR".to_string())),
                             FunctionArg::FieldValue(FieldValue::Number(1.0)),
                             FunctionArg::FieldValue(FieldValue::String(date_value))
                         ]
@@ -1831,10 +1840,99 @@ mod tests {
     /***************************************************************************************************
      * TESTS for execute_function
      * *************************************************************************************************/
+    #[test]
+    fn test_execute_function() {
+        let pod = Pod::new_hash();
+
+        let func = Function {
+            name: "DATE".to_string(),
+            args: vec![FunctionArg::FieldValue(FieldValue::String(
+                "2024-12-30".to_string(),
+            ))],
+        };
+
+        assert_eq!(
+            Ok(FieldValue::String("2024-12-30T00:00:00".to_string())),
+            execute_function(&func, &pod)
+        );
+
+        assert!(execute_function(
+            &Function {
+                name: "UNKNOWN".to_string(),
+                args: vec![],
+            },
+            &pod
+        )
+        .is_err());
+    }
 
     /***************************************************************************************************
      * TESTS for execute_function_date_add
      * *************************************************************************************************/
+    #[test]
+    fn test_execute_function_date_add() {
+        let pod = Pod::new_hash();
+
+        let func = Function {
+            name: "DATEADD".to_string(),
+            args: vec![
+                FunctionArg::FieldValue(FieldValue::String("YEAR".to_string())),
+                FunctionArg::FieldValue(FieldValue::Number(1.0)),
+                FunctionArg::FieldValue(FieldValue::String("2024-12-30".to_string())),
+            ],
+        };
+
+        assert_eq!(
+            Ok(FieldValue::String("2025-12-30T00:00:00".to_string())),
+            execute_function_date_add(&func, &pod)
+        );
+    }
+
+    #[test]
+    fn test_execute_function_date_add_with_pod() {
+        let mut pod = Pod::new_hash();
+        let _ = pod.insert("interval".to_string(), Pod::String("YEAR".to_string()));
+        let _ = pod.insert("value".to_string(), Pod::Integer(1));
+        let _ = pod.insert("date".to_string(), Pod::String("2024-12-30".to_string()));
+
+        let func = Function {
+            name: "DATEADD".to_string(),
+            args: vec![
+                FunctionArg::FieldName("interval".to_string()),
+                FunctionArg::FieldName("value".to_string()),
+                FunctionArg::FieldName("date".to_string()),
+            ],
+        };
+
+        assert_eq!(
+            Ok(FieldValue::String("2025-12-30T00:00:00".to_string())),
+            execute_function_date_add(&func, &pod)
+        );
+    }
+
+    #[test]
+    fn test_execute_function_date_add_with_pod_and_format() {
+        let mut pod = Pod::new_hash();
+        let _ = pod.insert("interval".to_string(), Pod::String("YEAR".to_string()));
+        let _ = pod.insert("value".to_string(), Pod::Integer(1));
+        let _ = pod.insert("date".to_string(), Pod::String("2024-12+30".to_string()));
+        let _ = pod.insert("format".to_string(), Pod::String("%Y-%m+%d".to_string()));
+
+        let func = Function {
+            name: "DATEADD".to_string(),
+            args: vec![
+                FunctionArg::FieldName("interval".to_string()),
+                FunctionArg::FieldName("value".to_string()),
+                FunctionArg::FieldName("date".to_string()),
+                FunctionArg::FieldName("format".to_string()),
+            ],
+        };
+
+        assert_eq!(
+            Ok(FieldValue::String("2025-12-30T00:00:00".to_string())),
+            execute_function_date_add(&func, &pod)
+        );
+    }
 
     /***************************************************************************************************
      * TESTS for execute_function_date
