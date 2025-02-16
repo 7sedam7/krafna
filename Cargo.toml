@@ -1,6 +1,6 @@
 [package]
 name = "krafna"
-version = "0.4.0"
+version = "0.4.1"
 authors = ["Joel Kunst <7sedam7@gmail.com>"]
 description = "Krafna is a terminal-based alternative to Obsidian's Dataview plugin, allowing you to query your Markdown files using standard SQL syntax."
 license = "MIT"
