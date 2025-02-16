@@ -1403,6 +1403,15 @@ mod tests {
                 &FieldValue::String("val.*".to_string())
             )
         );
+
+        assert_eq!(
+            Ok(FieldValue::Bool(false)),
+            execute_operation(
+                &Operator::Like,
+                &FieldValue::String("value".to_string()),
+                &FieldValue::String("[val.*".to_string())
+            )
+        );
     }
 
     #[test]
@@ -2135,6 +2144,20 @@ mod tests {
             ],
         };
 
+        assert!(execute_function_date_add(&func, &pod).is_err());
+    }
+
+    #[test]
+    fn test_execute_function_date_add_invalid_interval() {
+        let pod = Pod::new_hash();
+        let func = Function {
+            name: "DATEADD".to_string(),
+            args: vec![
+                FunctionArg::FieldValue(FieldValue::String("INVALID".to_string())),
+                FunctionArg::FieldValue(FieldValue::Number(1.0)),
+                FunctionArg::FieldValue(FieldValue::String("2024-12-30".to_string())),
+            ],
+        };
         assert!(execute_function_date_add(&func, &pod).is_err());
     }
 
