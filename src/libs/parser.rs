@@ -114,7 +114,6 @@ pub enum FieldValue {
 impl FieldValue {
     pub fn contains(&self, other: &Self) -> bool {
         match (self, other) {
-            (FieldValue::List(_), FieldValue::List(_)) => false,
             (FieldValue::List(list), _) => list.contains(other),
             (FieldValue::String(str), FieldValue::String(other_str)) => str.contains(other_str),
             _ => false,
