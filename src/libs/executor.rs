@@ -1,8 +1,12 @@
 use std::collections::HashMap;
 use std::error::Error;
+use std::num::NonZero;
+use std::sync::Mutex;
 
 use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, Utc};
 use gray_matter::Pod;
+use lru::LruCache;
+use once_cell::sync::Lazy;
 use regex::Regex;
 
 use crate::libs::data_fetcher::fetch_data;
@@ -289,11 +293,24 @@ fn execute_operation(
     }
 }
 
+static REGEX_CACHE: Lazy<Mutex<LruCache<String, Regex>>> =
+    once_cell::sync::Lazy::new(|| Mutex::new(LruCache::new(NonZero::new(100).unwrap())));
 fn execute_operation_like(a: &FieldValue, b: &FieldValue) -> bool {
     match (a, b) {
         (FieldValue::String(a_str), FieldValue::String(b_str)) => {
-            // TODO: consider DDosing of this
-            Regex::new(b_str).map_or(false, |re| re.is_match(a_str))
+            let mut cache = REGEX_CACHE.lock().unwrap();
+            match cache.get(b_str) {
+                Some(re) => re.is_match(a_str),
+                None => {
+                    if let Ok(re) = Regex::new(b_str) {
+                        let res = re.is_match(a_str);
+                        cache.put(b_str.clone(), re);
+                        res
+                    } else {
+                        false
+                    }
+                }
+            }
         }
         _ => false,
     }
