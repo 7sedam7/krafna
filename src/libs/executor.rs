@@ -1937,6 +1937,58 @@ mod tests {
     /***************************************************************************************************
      * TESTS for execute_function_date
      * *************************************************************************************************/
+    #[test]
+    fn test_execute_function_date() {
+        let pod = Pod::new_hash();
+
+        let func = Function {
+            name: "DATE".to_string(),
+            args: vec![FunctionArg::FieldValue(FieldValue::String(
+                "2024-12-30".to_string(),
+            ))],
+        };
+
+        assert_eq!(
+            Ok(FieldValue::String("2024-12-30T00:00:00".to_string())),
+            execute_function_date(&func, &pod)
+        );
+    }
+
+    #[test]
+    fn test_execute_function_date_with_pod() {
+        let mut pod = Pod::new_hash();
+        let _ = pod.insert("date".to_string(), Pod::String("2024-12-30".to_string()));
+
+        let func = Function {
+            name: "DATE".to_string(),
+            args: vec![FunctionArg::FieldName("date".to_string())],
+        };
+
+        assert_eq!(
+            Ok(FieldValue::String("2024-12-30T00:00:00".to_string())),
+            execute_function_date(&func, &pod)
+        );
+    }
+
+    #[test]
+    fn test_execute_function_date_with_pod_and_format() {
+        let mut pod = Pod::new_hash();
+        let _ = pod.insert("date".to_string(), Pod::String("2024-12+30".to_string()));
+        let _ = pod.insert("format".to_string(), Pod::String("%Y-%m+%d".to_string()));
+
+        let func = Function {
+            name: "DATE".to_string(),
+            args: vec![
+                FunctionArg::FieldName("date".to_string()),
+                FunctionArg::FieldName("format".to_string()),
+            ],
+        };
+
+        assert_eq!(
+            Ok(FieldValue::String("2024-12-30T00:00:00".to_string())),
+            execute_function_date(&func, &pod)
+        );
+    }
 
     /***************************************************************************************************
      * TESTS for parse_naive_datetime
