@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::error::Error;
 
 use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, Utc};
@@ -306,10 +307,7 @@ pub fn get_field_value(field_name: &str, data: &Pod) -> FieldValue {
         Some(Pod::Integer(num)) => FieldValue::Number(num as f64),
         Some(Pod::Boolean(bool)) => FieldValue::Bool(bool),
         Some(Pod::Array(list)) => pod_array_to_field_value(&list),
-        Some(Pod::Hash(hash)) => match Pod::Hash(hash).deserialize::<serde_json::Value>() {
-            Ok(val) => FieldValue::String(val.to_string()),
-            Err(_) => FieldValue::Null,
-        },
+        Some(Pod::Hash(hash)) => pod_hash_to_field_value(&hash),
         _ => FieldValue::Null,
     }
 }
@@ -339,11 +337,20 @@ fn pod_array_to_field_value(list: &Vec<Pod>) -> FieldValue {
             Pod::Float(num) => fv_list.push(FieldValue::Number(*num)),
             Pod::Integer(num) => fv_list.push(FieldValue::Number(*num as f64)),
             Pod::Boolean(bool) => fv_list.push(FieldValue::Bool(*bool)),
+            Pod::Array(list) => fv_list.push(pod_array_to_field_value(list)),
+            Pod::Hash(hash) => fv_list.push(pod_hash_to_field_value(hash)),
             _ => {}
         }
     }
 
     FieldValue::List(fv_list)
+}
+
+fn pod_hash_to_field_value(hash: &HashMap<String, Pod>) -> FieldValue {
+    match Pod::Hash(hash.clone()).deserialize::<serde_json::Value>() {
+        Ok(val) => FieldValue::String(val.to_string()),
+        Err(_) => FieldValue::Null,
+    }
 }
 
 /***************************************************************************************************
@@ -1696,4 +1703,144 @@ mod tests {
     // Operator::Divide => Err("DIVIDE operator not implemented!".to_string()),
     // Operator::Power => Err("POWER operator not implemented!".to_string()),
     // Operator::FloorDivide => Err("FLOOR DIVIDE operator not imlemented!".to_string()),
+
+    /***************************************************************************************************
+     * TESTS for get_field_value
+     * *************************************************************************************************/
+    #[test]
+    fn test_get_field_value() {
+        let mut pod = Pod::new_hash();
+        let key: String = "a".to_string().into();
+        let value = 1;
+        let _ = pod.insert(key.clone(), value);
+
+        assert_eq!(
+            FieldValue::Number(value as f64),
+            get_field_value(&key, &pod)
+        );
+
+        assert_eq!(FieldValue::Null, get_field_value("b", &pod));
+    }
+
+    /***************************************************************************************************
+     * TESTS for get_nested_pod
+     * *************************************************************************************************/
+    #[test]
+    fn test_get_nested_pod() {
+        let mut nested_pod = Pod::new_hash();
+        let nested_key = "b".to_string();
+        let nested_value = 2;
+        let _ = nested_pod.insert(nested_key.clone(), nested_value);
+
+        let mut pod = Pod::new_hash();
+        let key = "a".to_string();
+        let _ = pod.insert(key.clone(), nested_pod.clone());
+
+        assert_eq!(Some(nested_pod), get_nested_pod("a", &pod));
+        assert_eq!(
+            Some(Pod::Integer(nested_value)),
+            get_nested_pod(&format!("{}.{}", key, nested_key), &pod)
+        );
+
+        assert_eq!(None, get_nested_pod("b", &pod));
+        assert_eq!(None, get_nested_pod("a.c", &pod));
+    }
+
+    /***************************************************************************************************
+     * TESTS for pod_array_to_field_value
+     * *************************************************************************************************/
+    #[test]
+    fn test_pod_array_to_field_value() {
+        let mut pod = Pod::new_array();
+        let value1 = 1;
+        let value2 = 2;
+        let _ = pod.push(Pod::Integer(value1));
+        let _ = pod.push(Pod::Integer(value2));
+
+        assert_eq!(
+            FieldValue::List(vec![
+                FieldValue::Number(value1 as f64),
+                FieldValue::Number(value2 as f64)
+            ]),
+            pod_array_to_field_value(&pod.as_vec().unwrap())
+        );
+
+        assert_ne!(
+            FieldValue::List(vec![
+                FieldValue::Number(value1 as f64),
+                FieldValue::Number(value1 as f64)
+            ]),
+            pod_array_to_field_value(&pod.as_vec().unwrap())
+        );
+    }
+
+    #[test]
+    fn test_pod_array_to_field_value_nested() {
+        let value1 = 1;
+        let value2 = 2;
+
+        let mut nested_pod = Pod::new_array();
+        let _ = nested_pod.push(Pod::Integer(value1));
+        let _ = nested_pod.push(Pod::Integer(value2));
+
+        let mut nested_pod2 = Pod::new_hash();
+        let _ = nested_pod2.insert("a".to_string(), Pod::Integer(value1));
+
+        let mut pod = Pod::new_array();
+        let _ = pod.push(nested_pod.clone());
+        let _ = pod.push(nested_pod2.clone());
+
+        assert_eq!(
+            FieldValue::List(vec![
+                FieldValue::List(vec![
+                    FieldValue::Number(value1 as f64),
+                    FieldValue::Number(value2 as f64)
+                ]),
+                FieldValue::String(format!("{{\"a\":{}}}", value1))
+            ]),
+            pod_array_to_field_value(&pod.as_vec().unwrap())
+        );
+    }
+
+    /***************************************************************************************************
+     * TESTS for pod_hash_to_field_value
+     * *************************************************************************************************/
+    #[test]
+    fn test_pod_hash_to_field_value() {
+        let key1 = "a".to_string();
+        let key2 = "b".to_string();
+        let value1 = 1;
+        let value2 = 2;
+
+        let mut nested_pod = Pod::new_hash();
+        let _ = nested_pod.insert(key1.clone(), Pod::Integer(value1));
+        let _ = nested_pod.insert(key2.clone(), Pod::Integer(value2));
+
+        let mut pod = Pod::new_hash();
+        let _ = pod.insert(key1.clone(), nested_pod.clone());
+
+        assert_eq!(
+            FieldValue::String(format!(
+                "{{\"{}\":{{\"{}\":{},\"{}\":{}}}}}",
+                key1, key1, value1, key2, value2
+            )),
+            pod_hash_to_field_value(&pod.as_hashmap().unwrap())
+        );
+    }
+
+    /***************************************************************************************************
+     * TESTS for execute_function
+     * *************************************************************************************************/
+
+    /***************************************************************************************************
+     * TESTS for execute_function_date_add
+     * *************************************************************************************************/
+
+    /***************************************************************************************************
+     * TESTS for execute_function_date
+     * *************************************************************************************************/
+
+    /***************************************************************************************************
+     * TESTS for parse_naive_datetime
+     * *************************************************************************************************/
 }
