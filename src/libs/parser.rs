@@ -191,6 +191,9 @@ impl FieldValue {
     pub fn divide(&self, other: &Self) -> Result<Self, String> {
         match (self, other) {
             (FieldValue::Number(n), FieldValue::Number(other_n)) => {
+                if *other_n == 0.0 {
+                    return Err("Division by zero!".to_string());
+                }
                 Ok(FieldValue::Number(n / other_n))
             }
             _ => Err("Can't divide these types".to_string()),
@@ -209,6 +212,9 @@ impl FieldValue {
     pub fn floor_divide(&self, other: &Self) -> Result<Self, String> {
         match (self, other) {
             (FieldValue::Number(n), FieldValue::Number(other_n)) => {
+                if *other_n == 0.0 {
+                    return Err("Division by zero!".to_string());
+                }
                 Ok(FieldValue::Number((n / other_n).floor()))
             }
             _ => Err("Can't floor divide these types".to_string()),

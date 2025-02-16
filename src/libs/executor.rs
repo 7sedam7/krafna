@@ -2123,6 +2123,21 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_execute_function_date_add_invalid_first_arg() {
+        let pod = Pod::new_hash();
+        let func = Function {
+            name: "DATEADD".to_string(),
+            args: vec![
+                FunctionArg::FieldValue(FieldValue::Number(1.0)),
+                FunctionArg::FieldValue(FieldValue::Number(1.0)),
+                FunctionArg::FieldValue(FieldValue::String("2024-12-30".to_string())),
+            ],
+        };
+
+        assert!(execute_function_date_add(&func, &pod).is_err());
+    }
+
     /***************************************************************************************************
      * TESTS for execute_function_date
      * *************************************************************************************************/
