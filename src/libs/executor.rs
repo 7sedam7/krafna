@@ -148,7 +148,9 @@ fn execute_where(expression: &Vec<ExpressionElement>, data: &mut Vec<Pod>) -> Re
     }
 
     // Dry run to return an error if expression is invalid
-    let _ = evaluate_expression(expression, data.first().unwrap())?;
+    //let _ = evaluate_expression(expression, data.first().unwrap())?;
+    // TODO: better error reporting, we want to filter as false pods that do not match the
+    // expression, but we don't want to stop the execution if one pod fails to match the expression
 
     data.retain(|pod| match evaluate_expression(expression, pod) {
         Ok(FieldValue::Bool(bool)) => bool,

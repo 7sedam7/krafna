@@ -1,4 +1,15 @@
-# Changelog
+# Changelog:
+
+## [0.4.1] - 2025-02-13
+### Added
+- Added parsing of NULL
+
+### Changed
+- No dry run for expression evaluation
+
+### Fixed
+- If one document fails expression evaluation, it should not stop the whole evaluation
+
 
 ## [0.4.0] - 2025-02-13
 ### Added

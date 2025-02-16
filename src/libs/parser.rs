@@ -161,7 +161,7 @@ impl FieldValue {
             (FieldValue::Number(n), FieldValue::Number(other_n)) => {
                 Ok(FieldValue::Number(n + other_n))
             }
-            _ => Err("Can't add these types".to_string()),
+            _ => Err(format!("Can't add {:?} and {:?}", self, other)),
         }
     }
 
@@ -175,7 +175,7 @@ impl FieldValue {
             (FieldValue::Number(n), FieldValue::Number(other_n)) => {
                 Ok(FieldValue::Number(n - other_n))
             }
-            _ => Err("Can't subtract these types".to_string()),
+            _ => Err(format!("Can't substract {:?} and {:?}", self, other)),
         }
     }
 
@@ -184,7 +184,7 @@ impl FieldValue {
             (FieldValue::Number(n), FieldValue::Number(other_n)) => {
                 Ok(FieldValue::Number(n * other_n))
             }
-            _ => Err("Can't multiply these types".to_string()),
+            _ => Err(format!("Can't multiply {:?} and {:?}", self, other)),
         }
     }
 
@@ -196,7 +196,7 @@ impl FieldValue {
                 }
                 Ok(FieldValue::Number(n / other_n))
             }
-            _ => Err("Can't divide these types".to_string()),
+            _ => Err(format!("Can't divide {:?} and {:?}", self, other)),
         }
     }
 
@@ -205,7 +205,7 @@ impl FieldValue {
             (FieldValue::Number(n), FieldValue::Number(other_n)) => {
                 Ok(FieldValue::Number(n.powf(*other_n)))
             }
-            _ => Err("Can't power these types".to_string()),
+            _ => Err(format!("Can't power {:?} and {:?}", self, other)),
         }
     }
 
@@ -217,7 +217,7 @@ impl FieldValue {
                 }
                 Ok(FieldValue::Number((n / other_n).floor()))
             }
-            _ => Err("Can't floor divide these types".to_string()),
+            _ => Err(format!("Can't floor divide {:?} and {:?}", self, other)),
         }
     }
 }
@@ -727,6 +727,10 @@ impl Query {
 
         if let Ok(bool_value) = field_name.parse::<bool>() {
             return Ok(ExpressionElement::FieldValue(FieldValue::Bool(bool_value)));
+        }
+
+        if field_name.to_uppercase() == "NULL" {
+            return Ok(ExpressionElement::FieldValue(FieldValue::Null));
         }
 
         Ok(ExpressionElement::FieldName(field_name))
