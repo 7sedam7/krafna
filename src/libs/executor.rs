@@ -381,7 +381,7 @@ fn execute_function_date_add(func: &Function, data: &Pod) -> Result<FieldValue, 
             FieldValue::String(interval) => interval,
             _ => {
                 return Err(format!(
-                    "Function DATEADD expects first argument to be a interval, but found: {:?}",
+                    "Function DATEADD expects first argument to be an interval, but found: {:?}",
                     func.args[0]
                 ))
             }
@@ -389,7 +389,7 @@ fn execute_function_date_add(func: &Function, data: &Pod) -> Result<FieldValue, 
         FunctionArg::FieldValue(FieldValue::String(interval)) => interval.clone(),
         _ => {
             return Err(format!(
-                "Function DATEADD expects first argument to be a interval, but found: {:?}",
+                "Function DATEADD expects first argument to be an interval, but found: {:?}",
                 func.args[0]
             ))
         }
@@ -1284,7 +1284,7 @@ mod tests {
             "Top of the stack should be ("
         );
 
-        assert_eq!(1, queue.len(), "Queue should have 2 elements");
+        assert_eq!(1, queue.len(), "Queue should have 1 elements");
         assert_eq!(
             FieldValue::Bool(false),
             queue.last().unwrap().clone(),
