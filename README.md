@@ -2,6 +2,7 @@
 
 [![codecov](https://codecov.io/gh/7sedam7/krafna/branch/main/graph/badge.svg)](https://codecov.io/gh/7sedam7/krafna)
 ![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/7sedam7/krafna)
+![Crates.io Version](https://img.shields.io/crates/v/krafna)
 ![Crates.io Total Downloads](https://img.shields.io/crates/d/krafna)
 
 ![Krafna is a terminal-based alternative to Obsidian's Dataview plugin, allowing you to query your Markdown files using standard SQL syntax.](demo.gif)
