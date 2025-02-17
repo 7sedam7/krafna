@@ -14,6 +14,23 @@
 - Flexible output formats (TSV and JSON)
 - Compatible with Neovim plugin [Perec](https://github.com/7sedam7/perec.nvim)
 
+## Performance
+
+Some people have said that they'd prefer if frontmatter info would be stored in a db for performance reasons. (like caching)
+I did some benchmarking, and on base Mac mini M4, Krafna can query ~2500 files within ~100ms.
+While fetching the files and parsing them takes about 97% of the time and I have ideas for optimisation, result that benchmarks show should be good enough so I'll rather focus on adding more features for now.
+
+Run benchmarks: (you can change the amount of files that will be generated in the bench/query_benchmark.rs)
+``` bash
+cargo bench
+```
+Run flamegraph: (i'd comment out rayon and change `par_iter` to `iter` to reduce the noise in the flamegraph)
+``` bash
+cargo install flamegraph
+cargo flamegraph --root --bin krafna -- 'select file.name, tags from frontmatter_data("../krafna-bench/bench/") where "exampl" in tags'
+```
+
+
 ## Installation
 
 There are binaries available for Linux, macOS, and Windows under Releases.
