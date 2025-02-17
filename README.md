@@ -27,7 +27,7 @@ Run benchmarks: (you can change the number of files that will be generated in be
 cargo bench
 ```
 
-Run flamegraph: (I'd comment out rayon and change `par_iter` to `iter` to reduce the noise in the flamegraph)
+Run flamegraph: (For a cleaner flamegraph, consider temporarily disabling rayon’s parallelism by replacing `par_iter()` with `iter()`.)
 
 ``` bash
 cargo install flamegraph
@@ -147,7 +147,7 @@ Use with the [Perec](https://github.com/7sedam7/perec) Neovim plugin for seamles
 - [x]  * migrate file_name, etc under file (name, path, created, accessed, modified)
 - [x] add default variables (today)
 - [ ]  * change it so that it does not need to be on every row (can have a general_values hash that can be passed around, and value getters would first check there and then from the source)
-- [ ] Implement prunning of AND and OR operators (mostly for better error messages, performance there is more then good enough)
+- [ ] Implement pruning of AND and OR operators (mostly for better error messages, performance there is more than good enough)
 - [ ] TODOs
 - [x] Add tests for execution
 - [ ] add suport for functions in SELECT
