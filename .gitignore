@@ -2,3 +2,4 @@
 mise.toml
 .env
 .aider*
+flamegraph.svg
