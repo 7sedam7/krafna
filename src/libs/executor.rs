@@ -7,7 +7,6 @@ use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, Utc};
 use gray_matter::Pod;
 use lru::LruCache;
 use once_cell::sync::Lazy;
-//use rayon::prelude::*;
 use regex::Regex;
 
 use crate::libs::data_fetcher::fetch_data;
@@ -157,27 +156,6 @@ fn execute_where(expression: &Vec<ExpressionElement>, data: &mut Vec<Pod>) -> Re
         Ok(FieldValue::Bool(bool)) => bool,
         _ => false,
     });
-    //let filtered: Vec<_> = data
-    //    .par_iter()
-    //    .filter_map(|pod| match evaluate_expression(expression, pod) {
-    //        Ok(FieldValue::Bool(true)) => Some(pod.clone()),
-    //        _ => None,
-    //    })
-    //    .collect();
-    //let filtered: Vec<_> = data
-    //    .par_chunks(100)
-    //    .flat_map(|chunk| {
-    //        chunk
-    //            .iter() // Use iter to process each chunk sequentially
-    //            .filter_map(|pod| match evaluate_expression(expression, pod) {
-    //                Ok(FieldValue::Bool(true)) => Some(pod.clone()),
-    //                _ => None,
-    //            })
-    //            .collect::<Vec<_>>() // Collect the results of each chunk into a Vec
-    //    })
-    //    .collect();
-    //data.clear();
-    //data.extend(filtered);
 
     Ok(())
 }
