@@ -16,20 +16,23 @@
 
 ## Performance
 
-Some people have said that they'd prefer if frontmatter info would be stored in a db for performance reasons. (like caching)
+Some people have said that they'd prefer if frontmatter info would be stored in some kind of database for performance reasons.
 I did some benchmarking, and on base Mac mini M4, Krafna can query ~2500 files within ~100ms.
-While fetching the files and parsing them takes about 97% of the time and I have ideas for optimisation, result that benchmarks show should be good enough so I'll rather focus on adding more features for now.
+While fetching the files and parsing them takes about 97% of the time and I have ideas for optimisation (cache parsed files, and on runs parse only the ones that were modified after cache creation), 
+result that benchmarks show should be good enough so I'll rather focus on adding more features for now.
 
 Run benchmarks: (you can change the amount of files that will be generated in the bench/query_benchmark.rs)
+
 ``` bash
 cargo bench
 ```
+
 Run flamegraph: (i'd comment out rayon and change `par_iter` to `iter` to reduce the noise in the flamegraph)
+
 ``` bash
 cargo install flamegraph
 cargo flamegraph --root --bin krafna -- 'select file.name, tags from frontmatter_data("../krafna-bench/bench/") where "exampl" in tags'
 ```
-
 
 ## Installation
 
@@ -144,6 +147,7 @@ Use with the [Perec](https://github.com/7sedam7/perec) Neovim plugin for seamles
 - [x]  * migrate file_name, etc under file (name, path, created, accessed, modified)
 - [x] add default variables (today)
 - [ ]  * change it so that it does not need to be on every row (can have a general_values hash that can be passed around, and value getters would first check there and then from the source)
+- [ ] Implement prunning of AND and OR operators (mostly for better error messages, performance there is more then good enough)
 - [ ] TODOs
 - [x] Add tests for execution
 - [ ] add suport for functions in SELECT
