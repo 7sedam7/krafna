@@ -16,18 +16,18 @@
 
 ## Performance
 
-Some people have said that they'd prefer if frontmatter info would be stored in some kind of database for performance reasons.
-I did some benchmarking, and on base Mac mini M4, Krafna can query ~2500 files within ~100ms.
-While fetching the files and parsing them takes about 97% of the time and I have ideas for optimisation (cache parsed files, and on runs parse only the ones that were modified after cache creation), 
-result that benchmarks show should be good enough so I'll rather focus on adding more features for now.
+Some users have suggested storing frontmatter information in a database for performance reasons.
+Benchmarking on a base Mac mini M4 shows that Krafna can query ~2500 files within ~100ms.
+While file fetching and parsing takes about 97% of the time, potential optimizations include caching parsed files and only parsing modified files after cache creation.
+However, the current performance is more than good enough, so the focus will remain on feature development for now.
 
-Run benchmarks: (you can change the amount of files that will be generated in the bench/query_benchmark.rs)
+Run benchmarks: (you can change the number of files that will be generated in bench/query_benchmark.rs)
 
 ``` bash
 cargo bench
 ```
 
-Run flamegraph: (i'd comment out rayon and change `par_iter` to `iter` to reduce the noise in the flamegraph)
+Run flamegraph: (I'd comment out rayon and change `par_iter` to `iter` to reduce the noise in the flamegraph)
 
 ``` bash
 cargo install flamegraph
