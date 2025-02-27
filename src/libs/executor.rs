@@ -4,12 +4,12 @@ use std::num::NonZero;
 use std::sync::Mutex;
 
 use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, Utc};
-use gray_matter::Pod;
 use lru::LruCache;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
 use crate::libs::data_fetcher::fetch_data;
+use crate::libs::data_fetcher::pod::Pod;
 use crate::libs::parser::{
     ExpressionElement, FieldValue, Function, FunctionArg, Operator, OrderByFieldOption,
     OrderDirection, Query,
@@ -322,31 +322,15 @@ fn execute_operation_like(a: &FieldValue, b: &FieldValue) -> bool {
 *************************************** VALUE getters **********************************************
 ***************************************************************************************************/
 pub fn get_field_value(field_name: &str, data: &Pod) -> FieldValue {
-    match get_nested_pod(field_name, data) {
+    match data.nested_get(field_name) {
         Some(Pod::String(str)) => FieldValue::String(str.clone()),
-        Some(Pod::Float(num)) => FieldValue::Number(num),
-        Some(Pod::Integer(num)) => FieldValue::Number(num as f64),
-        Some(Pod::Boolean(bool)) => FieldValue::Bool(bool),
-        Some(Pod::Array(list)) => pod_array_to_field_value(&list),
-        Some(Pod::Hash(hash)) => pod_hash_to_field_value(&hash),
+        Some(Pod::Float(num)) => FieldValue::Number(*num),
+        Some(Pod::Integer(num)) => FieldValue::Number(*num as f64),
+        Some(Pod::Boolean(bool)) => FieldValue::Bool(*bool),
+        Some(Pod::Array(list)) => pod_array_to_field_value(list),
+        Some(Pod::Hash(hash)) => pod_hash_to_field_value(hash),
         _ => FieldValue::Null,
     }
-}
-
-pub fn get_nested_pod(field_name: &str, data: &Pod) -> Option<Pod> {
-    // TODO: think about field case insensitive comparisson (could convert to_lower when parsing
-    // the data)
-    let mut current = data.clone();
-    for key in field_name.split('.') {
-        match current.as_hashmap() {
-            Ok(hash) => match hash.get(key) {
-                Some(pod) => current.clone_from(pod),
-                None => return None,
-            },
-            Err(_) => return None,
-        }
-    }
-    Some(current)
 }
 
 fn pod_array_to_field_value(list: &Vec<Pod>) -> FieldValue {
@@ -368,7 +352,8 @@ fn pod_array_to_field_value(list: &Vec<Pod>) -> FieldValue {
 }
 
 fn pod_hash_to_field_value(hash: &HashMap<String, Pod>) -> FieldValue {
-    match Pod::Hash(hash.clone()).deserialize::<serde_json::Value>() {
+    //match Pod::Hash(hash.clone()).deserialize::<serde_json::Value>() {
+    match Pod::Hash(hash.clone()).to_json_string() {
         Ok(val) => FieldValue::String(val.to_string()),
         Err(_) => FieldValue::Null,
     }
@@ -629,7 +614,6 @@ fn parse_naive_datetime(input: &str, format: &Option<String>) -> Result<NaiveDat
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gray_matter::Pod;
 
     /***************************************************************************************************
      * TESTS for execute_select
@@ -737,13 +721,13 @@ mod tests {
 
                 assert!(hash.contains_key(&nest2), "Pod should retain nest2");
                 assert_eq!(
-                    setup_pod.as_hashmap().unwrap().get(&nest2).unwrap(),
+                    setup_pod.nested_get(&nest2).unwrap(),
                     hash.get(&nest2).unwrap()
                 );
 
                 assert!(hash.contains_key(&nest3), "Pod should retain nest3");
                 assert_eq!(
-                    setup_pod.as_hashmap().unwrap().get(&nest3).unwrap(),
+                    setup_pod.nested_get(&nest3).unwrap(),
                     hash.get(&nest3).unwrap()
                 );
             } else {
@@ -1962,14 +1946,14 @@ mod tests {
         let key = "a".to_string();
         let _ = pod.insert(key.clone(), nested_pod.clone());
 
-        assert_eq!(Some(nested_pod), get_nested_pod("a", &pod));
+        assert_eq!(Some(&nested_pod), pod.nested_get("a"));
         assert_eq!(
-            Some(Pod::Integer(nested_value)),
-            get_nested_pod(&format!("{}.{}", key, nested_key), &pod)
+            Some(&Pod::Integer(nested_value)),
+            pod.nested_get(&format!("{}.{}", key, nested_key))
         );
 
-        assert_eq!(None, get_nested_pod("b", &pod));
-        assert_eq!(None, get_nested_pod("a.c", &pod));
+        assert_eq!(None, pod.nested_get("b"));
+        assert_eq!(None, pod.nested_get("a.c"));
     }
 
     /***************************************************************************************************
@@ -2016,6 +2000,7 @@ mod tests {
         let _ = pod.push(nested_pod.clone());
         let _ = pod.push(nested_pod2.clone());
 
+        // TODO: this test is unstable because hash order is not detemined
         assert_eq!(
             FieldValue::List(vec![
                 FieldValue::List(vec![
@@ -2045,6 +2030,7 @@ mod tests {
         let mut pod = Pod::new_hash();
         let _ = pod.insert(key1.clone(), nested_pod.clone());
 
+        // TODO: this test is unstable because hash order is not detemined
         assert_eq!(
             FieldValue::String(format!(
                 "{{\"{}\":{{\"{}\":{},\"{}\":{}}}}}",

@@ -2,7 +2,7 @@ use std::error::Error;
 
 use clap::{Parser, ValueHint};
 
-use krafna::libs::data_fetcher::fetch_code_snippets;
+use krafna::libs::data_fetcher::markdown_fetcher::fetch_code_snippets;
 use krafna::libs::executor::execute_query;
 use krafna::libs::serializer::{pods_to_json, pods_to_tsv};
 
