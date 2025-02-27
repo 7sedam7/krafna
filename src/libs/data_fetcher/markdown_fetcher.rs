@@ -7,7 +7,6 @@ use chrono::{DateTime, Utc};
 use gray_matter::{engine::YAML, Matter};
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use rayon::prelude::*;
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
@@ -39,23 +38,78 @@ pub fn fetch_frontmatter_data(args: &[FunctionArg]) -> Result<Vec<Pod>, Box<dyn 
         }
     };
 
-    let files = get_markdown_files(&shellexpand::tilde(dir_path).into_owned())?;
-    // TODO: add cashing here
-    let mdf_files_info = parse_files(files)?;
+    let mdf_files_info = get_markdown_files_info(dir_path)?;
 
-    let frontmatters: Vec<Pod> = mdf_files_info
+    Ok(mdf_files_info
         .into_values()
         .map(|mdf_info| mdf_info.frontmatter)
-        .collect();
-
-    Ok(frontmatters)
+        .collect())
 }
 
-pub fn fetch_code_snippets(dir: &String, lang: String) -> Result<Vec<String>, Box<dyn Error>> {
-    let files = get_markdown_files(&shellexpand::tilde(&dir).into_owned())?;
-    let code_snippets = read_code_snippet(files, &lang)?;
+pub fn fetch_markdown_links(args: &[FunctionArg]) -> Result<Vec<Pod>, Box<dyn Error>> {
+    if args.len() != 1 {
+        return Err(format!(
+            "Incorret amount of arguments, 1 String expected, but {} arguments found!",
+            args.len()
+        )
+        .into());
+    }
+    let dir_path = match args.first() {
+        Some(FunctionArg::FieldValue(FieldValue::String(str))) => str,
+        _ => {
+            return Err(format!("Expected a string argument, but found {:?}", args.first()).into())
+        }
+    };
 
-    Ok(code_snippets)
+    let mdf_files_info = get_markdown_files_info(dir_path)?;
+
+    Ok(mdf_files_info
+        .into_values()
+        .flat_map(|mdf_info| mdf_info.links)
+        .collect())
+}
+
+pub fn fetch_markdown_tasks(args: &[FunctionArg]) -> Result<Vec<Pod>, Box<dyn Error>> {
+    if args.len() != 1 {
+        return Err(format!(
+            "Incorret amount of arguments, 1 String expected, but {} arguments found!",
+            args.len()
+        )
+        .into());
+    }
+    let dir_path = match args.first() {
+        Some(FunctionArg::FieldValue(FieldValue::String(str))) => str,
+        _ => {
+            return Err(format!("Expected a string argument, but found {:?}", args.first()).into())
+        }
+    };
+
+    let mdf_files_info = get_markdown_files_info(dir_path)?;
+
+    Ok(mdf_files_info
+        .into_values()
+        .flat_map(|mdf_info| mdf_info.tasks)
+        .collect())
+}
+
+pub fn fetch_code_snippets(
+    dir_path: &String,
+    _lang: String,
+) -> Result<Vec<String>, Box<dyn Error>> {
+    let mdf_files_info = get_markdown_files_info(dir_path)?;
+
+    Ok(mdf_files_info
+        .into_values()
+        .flat_map(|mdf_info| mdf_info.code_blocks)
+        .collect())
+}
+
+fn get_markdown_files_info(
+    dir_path: &String,
+) -> Result<HashMap<String, MarkdownFileInfo>, Box<dyn Error>> {
+    let files = get_markdown_files(&shellexpand::tilde(dir_path).into_owned())?;
+    // TODO: add cashing here
+    parse_files(files)
 }
 
 fn get_markdown_files(dir: &String) -> Result<Vec<PathBuf>, Box<dyn Error>> {
@@ -91,6 +145,8 @@ fn parse_files(files: Vec<PathBuf>) -> Result<HashMap<String, MarkdownFileInfo>,
         })
         .collect();
 
+    // TODO: adjust interpreted links
+
     Ok(results)
 }
 
@@ -111,7 +167,7 @@ fn parse_file(path: &PathBuf, matter: &Matter<YAML>) -> Result<MarkdownFileInfo,
 
     // Parse the rest of markdfown for title,code, links, and tasks
     let mut mdf_info = parse_markdown_content(&markdown_content, &file_data);
-    //mdf_info.modified = file_data.get("modified").unwrap().to_string();
+    // TODO: mdf_info.modified = file_data.get("modified").unwrap().to_string();
     mdf_info.frontmatter = frontmatter;
 
     Ok(mdf_info)
@@ -367,28 +423,6 @@ fn gray_matter_pod_to_pod(pod: &gray_matter::Pod) -> Pod {
             Pod::Hash(new_hm)
         }
     }
-}
-
-fn read_code_snippet(files: Vec<PathBuf>, lang: &String) -> Result<Vec<String>, Box<dyn Error>> {
-    let pattern = format!(r"```\s*{}\s*([\s\S]*?)```", lang);
-    let re = Regex::new(&pattern)?;
-
-    let results: Vec<String> = files
-        .par_iter()
-        .filter_map(|path| {
-            let content = fs::read_to_string(path).ok()?;
-
-            let matches: Vec<String> = re
-                .captures_iter(&content)
-                .map(|cap| cap[1].replace('\n', " ").trim().to_string())
-                .collect();
-
-            Some(matches)
-        })
-        .flatten()
-        .collect();
-
-    Ok(results)
 }
 
 fn get_file_info(path: &PathBuf) -> HashMap<String, Pod> {
