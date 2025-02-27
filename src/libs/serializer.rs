@@ -1,7 +1,6 @@
-use gray_matter::Pod;
 use serde_json;
 
-use crate::libs::executor::{get_field_value, get_nested_pod};
+use crate::libs::data_fetcher::pod::Pod;
 
 pub fn pods_to_json(field_names: Vec<String>, pods: Vec<Pod>) -> String {
     let json_values: Vec<serde_json::Value> = pods
@@ -9,11 +8,12 @@ pub fn pods_to_json(field_names: Vec<String>, pods: Vec<Pod>) -> String {
         .filter_map(|pod| {
             let mut hash = Pod::new_hash();
             for field_name in &field_names {
-                if let Some(nested_pod) = get_nested_pod(field_name, &pod) {
-                    let _ = hash.insert(field_name.clone(), nested_pod);
+                if let Some(nested_pod) = pod.nested_get(field_name) {
+                    let _ = hash.insert(field_name.clone(), nested_pod.clone());
                 }
             }
             hash.deserialize::<serde_json::Value>().ok()
+            //hash.to_json_string().ok()
         })
         .collect();
 
@@ -38,7 +38,11 @@ pub fn pods_to_tsv(field_names: Vec<String>, pods: Vec<Pod>) -> String {
         .map(|pod| {
             field_names
                 .iter()
-                .map(|field_name| get_field_value(field_name, &pod).to_string())
+                .map(|field_name| {
+                    pod.nested_get(field_name)
+                        .map(Pod::to_string)
+                        .unwrap_or_default()
+                })
                 .collect::<Vec<String>>()
                 .join("\t")
         })

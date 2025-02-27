@@ -3,7 +3,7 @@ use std::{fs, panic, sync::Arc};
 use criterion::{criterion_group, criterion_main, Criterion};
 use rayon::prelude::*;
 
-use krafna::libs::data_fetcher::fetch_code_snippets;
+use krafna::libs::data_fetcher::markdown_fetcher::fetch_code_snippets;
 use krafna::libs::executor::execute_query;
 
 const NUMBER_OF_FILES: u32 = 2500;
