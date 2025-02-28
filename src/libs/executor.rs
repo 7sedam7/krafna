@@ -575,7 +575,6 @@ fn execute_function_date(func: &Function, data: &Pod) -> Result<FieldValue, Stri
     ))
 }
 
-// TODO: use for `execute_function_date` that parses a date `DATE(<date>, <optional format>)`
 fn parse_naive_datetime(input: &str, format: &Option<String>) -> Result<NaiveDateTime, String> {
     if let Some(format) = format {
         if let Ok(naive_date) = NaiveDate::parse_from_str(input, format) {
@@ -2000,17 +1999,38 @@ mod tests {
         let _ = pod.push(nested_pod.clone());
         let _ = pod.push(nested_pod2.clone());
 
-        // TODO: this test is unstable because hash order is not detemined
-        assert_eq!(
-            FieldValue::List(vec![
-                FieldValue::List(vec![
-                    FieldValue::Number(value1 as f64),
-                    FieldValue::Number(value2 as f64)
-                ]),
-                FieldValue::String(format!("{{\"a\":{}}}", value1))
-            ]),
-            pod_array_to_field_value(&pod.as_vec().unwrap())
-        );
+        let result = pod_array_to_field_value(&pod.as_vec().unwrap());
+
+        // Check structure instead of exact string representation
+        match &result {
+            FieldValue::List(items) => {
+                assert_eq!(items.len(), 2, "Result list should have 2 items");
+
+                // First item should be a list with two numbers
+                if let FieldValue::List(inner_list) = &items[0] {
+                    assert_eq!(
+                        inner_list.len(),
+                        2,
+                        "First item should be a list with 2 elements"
+                    );
+                    assert_eq!(inner_list[0], FieldValue::Number(value1 as f64));
+                    assert_eq!(inner_list[1], FieldValue::Number(value2 as f64));
+                } else {
+                    panic!("First item should be a list");
+                }
+
+                // Second item should be a JSON string containing "a":1
+                if let FieldValue::String(json_str) = &items[1] {
+                    assert!(
+                        json_str.contains("\"a\":1"),
+                        "JSON string should contain \"a\":1"
+                    );
+                } else {
+                    panic!("Second item should be a string");
+                }
+            }
+            _ => panic!("Result should be a list"),
+        }
     }
 
     /***************************************************************************************************
@@ -2030,14 +2050,42 @@ mod tests {
         let mut pod = Pod::new_hash();
         let _ = pod.insert(key1.clone(), nested_pod.clone());
 
-        // TODO: this test is unstable because hash order is not detemined
-        assert_eq!(
-            FieldValue::String(format!(
-                "{{\"{}\":{{\"{}\":{},\"{}\":{}}}}}",
-                key1, key1, value1, key2, value2
-            )),
-            pod_hash_to_field_value(&pod.as_hashmap().unwrap())
-        );
+        let result = pod_hash_to_field_value(&pod.as_hashmap().unwrap());
+
+        // Check the result contains the expected keys and values rather than exact string match
+        match result {
+            FieldValue::String(json_str) => {
+                // Check if it's valid JSON
+                let parsed: serde_json::Value =
+                    serde_json::from_str(&json_str).expect("Should be valid JSON");
+
+                // Check the structure
+                assert!(parsed.is_object(), "Result should be a JSON object");
+
+                // Check if the object has "a" key
+                let obj = parsed.as_object().unwrap();
+                assert!(obj.contains_key(&key1), "Result should contain key 'a'");
+
+                // Check if "a" contains another object with keys "a" and "b"
+                let nested = &obj[&key1];
+                assert!(nested.is_object(), "Nested value should be an object");
+
+                let nested_obj = nested.as_object().unwrap();
+                assert!(
+                    nested_obj.contains_key(&key1),
+                    "Nested object should contain key 'a'"
+                );
+                assert!(
+                    nested_obj.contains_key(&key2),
+                    "Nested object should contain key 'b'"
+                );
+
+                // Check values
+                assert_eq!(nested_obj[&key1].as_i64(), Some(value1));
+                assert_eq!(nested_obj[&key2].as_i64(), Some(value2));
+            }
+            _ => panic!("Result should be a string"),
+        }
     }
 
     /***************************************************************************************************
