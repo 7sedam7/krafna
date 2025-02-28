@@ -17,17 +17,21 @@
 ## Performance
 
 Benchmarking on a base Mac mini M4 shows that Krafna can query:
- - ~5000 files (without cache)
- - ~100 000 files (with cache)
+
+- ~5000 files (without cache)
+- ~100 000 files (with cache)
+
  within ~100ms.
 
 Caching is don with [bincode](https://github.com/bincode-org/bincode?tab=readme-ov-file).
-Cache files are bigger then necessery, but not that crazy, I might consider compression in the future. (Currently ~250KB for ~100 files)
+Cache files are not crazy small, but not too big. I might consider compression in the future. (Currently ~250KB for ~100 files)
 ONLY files that were modified since the last cache are parsed and re-cached.
 Cache files are stored at:
- - LINUX: $XDG_CACHE_HOME or $HOME/.cache/
- - WINDOWS: {FOLDERID_LocalAppData}
- - MAC: $HOME/Library/Caches
+
+- LINUX: $XDG_CACHE_HOME or $HOME/.cache/
+- WINDOWS: {FOLDERID_LocalAppData}
+- MAC: $HOME/Library/Caches
+
 at `com/7sedam7/krafna`
 
 Flamegraph is currently pointing to Pod (internal enum struct) deserialization as the biggest bottleneck.
@@ -132,7 +136,7 @@ Options:
   - `file.*` - file data same as above
   - `checked` - true if the task is checked (`- [x]`)
   - `text` - text of the task
-  - `ord` - order of the task in the file. If the task is a subtask, there is a '.' and then number for ordering within a parent task. Nesting is supported.
+  - `ord` - order of the task in the file. If the task is a subtask, there is a '.' and then a number for ordering within a parent task. Nesting is supported.
   - `parent` - parent `ord` of the task in the file. If the task is not a subtask, this will be empty
 
 
