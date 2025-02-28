@@ -1,6 +1,8 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fs;
+use std::fs::File;
+use std::io::{BufReader, BufWriter, Write};
 use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
@@ -82,8 +84,73 @@ fn get_markdown_files_info(
     dir_path: &str,
 ) -> Result<HashMap<String, MarkdownFileInfo>, Box<dyn Error>> {
     let files = get_markdown_files(&shellexpand::tilde(dir_path).into_owned())?;
-    // TODO: add cashing here
-    parse_files(files)
+
+    // Do caching of markdown files info
+    let mut mdf_files_info = load_cache();
+    if mdf_files_info.is_empty() {
+        let mdf_info = parse_files(files)?;
+        save_cache(&mdf_info);
+        return Ok(mdf_info);
+    }
+
+    let file_paths: HashSet<String> = files
+        .iter()
+        .map(|path| path.display().to_string())
+        .collect();
+    // Filter out files that have not been modified
+    let files_to_parse: Vec<PathBuf> = files
+        .into_iter()
+        .filter(|file_path| {
+            let mdf_info = mdf_files_info.get(&file_path.display().to_string());
+            if mdf_info.is_none() {
+                return true;
+            }
+            let metadata = fs::metadata(file_path);
+            match metadata {
+                Ok(metadata) => {
+                    if let Ok(modified_time) = metadata.modified() {
+                        let modified = DateTime::<Utc>::from(modified_time).to_rfc3339();
+                        return mdf_info.unwrap().modified < modified;
+                    }
+                    true
+                }
+                Err(_) => true,
+            }
+        })
+        .collect();
+
+    if !files_to_parse.is_empty() {
+        let new_mdf_files_info = parse_files(files_to_parse)?;
+        for (file_path, new_mdf_info) in new_mdf_files_info {
+            mdf_files_info.insert(file_path, new_mdf_info);
+        }
+        save_cache(&mdf_files_info);
+    }
+
+    // Filter out files that are not in the requestd directory
+    mdf_files_info.retain(|file_path, _| file_paths.contains(file_path));
+
+    Ok(mdf_files_info)
+}
+
+static CACHE_FILE_PATH: &str = "save.bin";
+fn save_cache(mdf_info: &HashMap<String, MarkdownFileInfo>) {
+    // Write object to file
+    let file = File::create(CACHE_FILE_PATH).unwrap();
+    let mut writer = BufWriter::new(file);
+    bincode::serialize_into(&mut writer, &mdf_info).unwrap();
+    let _ = writer.flush(); // Ensure all data is written to disk
+}
+
+fn load_cache() -> HashMap<String, MarkdownFileInfo> {
+    match File::open(CACHE_FILE_PATH) {
+        Ok(file) => {
+            let reader = BufReader::new(file);
+            bincode::deserialize_from::<BufReader<File>, HashMap<String, MarkdownFileInfo>>(reader)
+                .unwrap_or_default()
+        }
+        Err(_) => HashMap::new(),
+    }
 }
 
 fn get_markdown_files(dir: &String) -> Result<Vec<PathBuf>, Box<dyn Error>> {
@@ -108,6 +175,7 @@ fn get_markdown_files(dir: &String) -> Result<Vec<PathBuf>, Box<dyn Error>> {
 }
 
 fn parse_files(files: Vec<PathBuf>) -> Result<HashMap<String, MarkdownFileInfo>, Box<dyn Error>> {
+    println!("KIFLAAAAAAA");
     let matter = Matter::<YAML>::new();
 
     // Convert to parallel iterator and collect results

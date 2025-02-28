@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
-#[serde(untagged)]
 pub enum Pod {
     Null,
     String(String),
@@ -61,13 +60,32 @@ impl Pod {
         }
     }
 
-    pub fn to_json_string(&self) -> Result<String, serde_json::Error> {
-        serde_json::to_string(self)
+    pub fn to_untagged_json_string(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string(
+            &self
+                .to_gray_matter_pod()
+                .deserialize::<serde_json::Value>()?,
+        )
     }
 
-    pub fn deserialize<T: serde::de::DeserializeOwned>(&self) -> Result<T, serde_json::Error> {
-        let json_string = self.to_json_string()?;
-        serde_json::from_str(&json_string)
+    // TODO: Figure out how to better deal with untagged so i don't have to do this crazy
+    // conversion hack
+    pub fn to_gray_matter_pod(&self) -> gray_matter::Pod {
+        match self {
+            Pod::Array(array) => {
+                gray_matter::Pod::Array(array.iter().map(|x| x.to_gray_matter_pod()).collect())
+            }
+            Pod::Hash(hash) => gray_matter::Pod::Hash(
+                hash.iter()
+                    .map(|(k, v)| (k.clone(), v.to_gray_matter_pod()))
+                    .collect(),
+            ),
+            Pod::String(s) => gray_matter::Pod::String(s.clone()),
+            Pod::Integer(i) => gray_matter::Pod::Integer(*i),
+            Pod::Float(f) => gray_matter::Pod::Float(*f),
+            Pod::Boolean(b) => gray_matter::Pod::Boolean(*b),
+            Pod::Null => gray_matter::Pod::Null,
+        }
     }
 
     pub fn as_string(&self) -> Option<String> {
@@ -121,7 +139,7 @@ impl std::fmt::Display for Pod {
             Pod::Integer(ref value) => write!(f, "{}", value),
             Pod::Float(ref value) => write!(f, "{}", value),
             Pod::Boolean(ref value) => write!(f, "{}", value),
-            _ => write!(f, "{}", self.to_json_string().unwrap()),
+            _ => write!(f, "{}", self.to_untagged_json_string().unwrap()),
         }
     }
 }

@@ -1,9 +1,7 @@
-use serde_json;
-
 use crate::libs::data_fetcher::pod::Pod;
 
 pub fn pods_to_json(field_names: Vec<String>, pods: Vec<Pod>) -> String {
-    let json_values: Vec<serde_json::Value> = pods
+    let json_values: Vec<String> = pods
         .into_iter()
         .filter_map(|pod| {
             let mut hash = Pod::new_hash();
@@ -12,12 +10,11 @@ pub fn pods_to_json(field_names: Vec<String>, pods: Vec<Pod>) -> String {
                     let _ = hash.insert(field_name.clone(), nested_pod.clone());
                 }
             }
-            hash.deserialize::<serde_json::Value>().ok()
-            //TODO: improve performance with: hash.to_json_string().ok()
+            hash.to_untagged_json_string().ok()
         })
         .collect();
 
-    serde_json::to_string(&json_values).unwrap_or_else(|_| "[]".to_string())
+    format!("[{}]", json_values.join(","))
 }
 
 pub fn pods_to_tsv(field_names: Vec<String>, pods: Vec<Pod>) -> String {

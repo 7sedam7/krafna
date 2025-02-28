@@ -353,7 +353,7 @@ fn pod_array_to_field_value(list: &Vec<Pod>) -> FieldValue {
 
 fn pod_hash_to_field_value(hash: &HashMap<String, Pod>) -> FieldValue {
     //match Pod::Hash(hash.clone()).deserialize::<serde_json::Value>() {
-    match Pod::Hash(hash.clone()).to_json_string() {
+    match Pod::Hash(hash.clone()).to_untagged_json_string() {
         Ok(val) => FieldValue::String(val.to_string()),
         Err(_) => FieldValue::Null,
     }
