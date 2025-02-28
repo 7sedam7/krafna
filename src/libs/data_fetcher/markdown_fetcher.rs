@@ -6,6 +6,7 @@ use std::io::{BufReader, BufWriter, Write};
 use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
+use directories::ProjectDirs;
 use gray_matter::{engine::YAML, Matter};
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use rayon::prelude::*;
@@ -133,24 +134,54 @@ fn get_markdown_files_info(
     Ok(mdf_files_info)
 }
 
-static CACHE_FILE_PATH: &str = "save.bin";
+static CACHE_FILE_PATH: &str = "markdown.cache";
+fn get_cache_file_path() -> Result<PathBuf, Box<dyn Error>> {
+    let cache_dir = ProjectDirs::from("com", "7sedam7", "krafna")
+        .map(|proj_dirs| proj_dirs.cache_dir().to_path_buf())
+        .ok_or("Could not determine cache directory")?;
+
+    // Create the directory if it doesn't exist
+    fs::create_dir_all(&cache_dir)?;
+
+    Ok(cache_dir.join(CACHE_FILE_PATH))
+}
+
 fn save_cache(mdf_info: &HashMap<String, MarkdownFileInfo>) {
-    // Write object to file
-    let file = File::create(CACHE_FILE_PATH).unwrap();
+    let file_path = match get_cache_file_path() {
+        Ok(path) => path,
+        Err(_) => return,
+    };
+    let file = match File::create(file_path) {
+        Ok(file) => file,
+        Err(_) => return,
+    };
     let mut writer = BufWriter::new(file);
-    bincode::serialize_into(&mut writer, &mdf_info).unwrap();
-    let _ = writer.flush(); // Ensure all data is written to disk
+    if bincode::serialize_into(&mut writer, &mdf_info).is_ok() {
+        let _ = writer.flush(); // Ensure all data is written to disk
+    }
 }
 
 fn load_cache() -> HashMap<String, MarkdownFileInfo> {
-    match File::open(CACHE_FILE_PATH) {
-        Ok(file) => {
-            let reader = BufReader::new(file);
-            bincode::deserialize_from::<BufReader<File>, HashMap<String, MarkdownFileInfo>>(reader)
-                .unwrap_or_default()
+    let file_path = match get_cache_file_path() {
+        Ok(path) => path,
+        Err(e) => {
+            eprintln!("[LOAD MD CACHE] Error getting file path: {}", e);
+            return HashMap::new();
         }
-        Err(_) => HashMap::new(),
-    }
+    };
+    let file = match File::open(file_path) {
+        Ok(file) => file,
+        Err(e) => {
+            eprintln!("[LOAD MD CACHE] Error opening a file: {}", e);
+            return HashMap::new();
+        }
+    };
+    let reader = BufReader::new(file);
+    bincode::deserialize_from::<BufReader<File>, HashMap<String, MarkdownFileInfo>>(reader)
+        .unwrap_or_else(|e| {
+            eprintln!("[LOAD MD CACHE] Error deserializing: {}", e);
+            HashMap::new()
+        })
 }
 
 fn get_markdown_files(dir: &String) -> Result<Vec<PathBuf>, Box<dyn Error>> {
@@ -175,12 +206,12 @@ fn get_markdown_files(dir: &String) -> Result<Vec<PathBuf>, Box<dyn Error>> {
 }
 
 fn parse_files(files: Vec<PathBuf>) -> Result<HashMap<String, MarkdownFileInfo>, Box<dyn Error>> {
-    println!("KIFLAAAAAAA");
     let matter = Matter::<YAML>::new();
 
     // Convert to parallel iterator and collect results
     let results: HashMap<String, MarkdownFileInfo> = files
         .par_iter()
+        //.iter()
         .filter_map(|path| {
             let mdf_info = parse_file(path, &matter).ok()?;
             Some((path.display().to_string(), mdf_info))

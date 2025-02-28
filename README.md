@@ -16,10 +16,24 @@
 
 ## Performance
 
-Some users have suggested storing frontmatter information in a database for performance reasons.
-Benchmarking on a base Mac mini M4 shows that Krafna can query ~2500 files within ~100ms.
-While file fetching and parsing takes about 97% of the time, potential optimizations include caching parsed files and only parsing modified files after cache creation.
-However, the current performance is more than good enough, so the focus will remain on feature development for now.
+Benchmarking on a base Mac mini M4 shows that Krafna can query:
+ - ~5000 files (without cache)
+ - ~100 000 files (with cache)
+ within ~100ms.
+
+Caching is don with [bincode](https://github.com/bincode-org/bincode?tab=readme-ov-file).
+Cache files are bigger then necessery, but not that crazy, I might consider compression in the future. (Currently ~250KB for ~100 files)
+ONLY files that were modified since the last cache are parsed and re-cached.
+Cache files are stored at:
+ - LINUX: $XDG_CACHE_HOME or $HOME/.cache/
+ - WINDOWS: {FOLDERID_LocalAppData}
+ - MAC: $HOME/Library/Caches
+at `com/7sedam7/krafna`
+
+Flamegraph is currently pointing to Pod (internal enum struct) deserialization as the biggest bottleneck.
+
+`cargo bench` has been giving me weird results recently, I'm not expert at using it and did not want to spend too much time on it.
+`gtime -v` might be less precise when it comes to miliseconds, but it seems to give more realistic results.
 
 Run benchmarks: (you can change the number of files that will be generated in bench/query_benchmark.rs)
 
@@ -205,6 +219,7 @@ Use with the [Perec](https://github.com/7sedam7/perec) Neovim plugin for seamles
 
 - [grey-matter-rs](https://github.com/the-alchemists-of-arland/gray-matter-rs) for parsing frontmatter data
 - [rayon](https://github.com/rayon-rs/rayon) for parallelizing execution
+- [bincode](https://github.com/bincode-org/bincode?tab=readme-ov-file) for binary serialization
 - [CodeRabbit](https://coderabbit.io) for code reviews
 - Various AI tools for help with answering questions faster then me searching on Google/StackOverflow
 
