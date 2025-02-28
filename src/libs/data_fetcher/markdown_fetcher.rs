@@ -252,7 +252,7 @@ fn find_matching_path(
     // Dashes replaced title matches
     title_matches = titles
         .iter()
-        .filter(|(title, _)| title.eq_ignore_ascii_case(cleaned_link.replace("-", " ").trim()))
+        .filter(|(title, _)| title.eq_ignore_ascii_case(cleaned_link.replace('-', " ").trim()))
         .map(|(_, path)| path)
         .collect();
 
@@ -268,8 +268,8 @@ fn find_matching_path(
         .iter()
         .filter(|(title, _)| {
             title
-                .replace(".", "")
-                .eq_ignore_ascii_case(cleaned_link.replace("-", " ").trim())
+                .replace('.', "")
+                .eq_ignore_ascii_case(cleaned_link.replace('-', " ").trim())
         })
         .map(|(_, path)| path)
         .collect();
@@ -293,7 +293,7 @@ fn parse_file(path: &PathBuf, matter: &Matter<YAML>) -> Result<MarkdownFileInfo,
         .data
         .as_ref()
         .map(gray_matter_pod_to_pod)
-        .unwrap_or(Pod::new_hash());
+        .unwrap_or_else(Pod::new_hash);
     let markdown_content = result.content;
 
     let file_data = get_file_info(path);
@@ -349,19 +349,14 @@ fn parse_markdown_content(
     for event in parser {
         match event {
             // Title
-            Event::Start(Tag::Heading {
-                level,
-                id: _,
-                classes: _,
-                attrs: _,
-            }) if !title_complete => {
+            Event::Start(Tag::Heading { level, .. }) if !title_complete => {
                 if level == HeadingLevel::H1 {
                     in_title = true;
                 }
             }
             Event::End(TagEnd::Heading(_)) if !title_complete => {
                 if in_title {
-                    mdf_info.title = title_text.clone();
+                    mdf_info.title.clone_from(&title_text);
                     title_complete = true;
                 }
                 in_title = false;
@@ -395,8 +390,7 @@ fn parse_markdown_content(
             Event::Start(Tag::Link {
                 link_type,
                 dest_url: url,
-                title: _,
-                id: _,
+                ..
             }) => {
                 if link_type == pulldown_cmark::LinkType::Inline
                     || link_type == (pulldown_cmark::LinkType::WikiLink { has_pothole: false })
@@ -405,7 +399,7 @@ fn parse_markdown_content(
                     current_link.push_str(&url);
                     current_link_type = match link_type {
                         pulldown_cmark::LinkType::Inline => "inline".to_string(),
-                        pulldown_cmark::LinkType::WikiLink { has_pothole: _ } => "wiki".to_string(),
+                        pulldown_cmark::LinkType::WikiLink { .. } => "wiki".to_string(),
                         _ => "".to_string(),
                     };
                 }
