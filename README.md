@@ -84,8 +84,44 @@ Options:
 
 ### FROM
 
-- Currently, only `FROM FRONTMATTER_DATA("<path>")` is supported.
-- This will find all markdown files in the specified path and use their frontmatter data as rows.
+#### FRONTMATTER_DATA
+
+- `FROM FRONTMATTER_DATA("<path>")`
+- This will find all markdown files in the specified `<path>` and use their frontmatter data as rows.
+- FIELDS:
+    - `file.name` - name of the file
+    - `file.path` - path to the file
+    - `file.created` - date when the file was created
+    - `file.accessed` - date when the file was last accessed
+    - `file.modified` - date when the file was last modified
+    - All other fields are from frontmatter data
+
+#### MD_LINKS
+
+- `FROM MD_LINKS("<path>")`
+- This will find all the links in markdown files in the specified `<path>`. Each link is a separate row.
+- FIELDS:
+    - `file.*` - file data same as above
+    - `type` - type of the link (inline, wiki)
+    - `external` - true if the link is external (not a local file)
+    - `url` - original url text from markdown file
+    - `path` - interpreted path to the local file in case link is not external. (relies on that path being within argument specified `<path>`, otherwise it will be empty)
+    - `text` - text of the link
+    - `ord` - order of the link in the file
+
+#### MD_TASKS
+
+- `FROM MD_TASKS("<path>")`
+- This will find all the tasks in markdown files in the specified `<path>`. Each link is a separate row.
+- Tasks in markdown are defined as lines starting with `- [ ]` or `- [x]`
+- FIELDS:
+    - `file.*` - file data same as above
+    - `checked` - true if the task is checked (`- [x]`)
+    - `text` - text of the task
+    - `ord` - order of the task in the file. If task is subtask, there is a '.' and then number for ordering within a parent task. Nesting is supported.
+    - `parent` - parent `ord` of the task in the file. If the task is not a subtask, this will be empty
+
+
 - More functions will come.
 - No support for AS yet.
 
