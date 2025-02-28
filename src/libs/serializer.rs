@@ -13,7 +13,7 @@ pub fn pods_to_json(field_names: Vec<String>, pods: Vec<Pod>) -> String {
                 }
             }
             hash.deserialize::<serde_json::Value>().ok()
-            //hash.to_json_string().ok()
+            //TODO: improve performance with: hash.to_json_string().ok()
         })
         .collect();
 

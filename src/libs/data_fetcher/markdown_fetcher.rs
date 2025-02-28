@@ -145,9 +145,143 @@ fn parse_files(files: Vec<PathBuf>) -> Result<HashMap<String, MarkdownFileInfo>,
         })
         .collect();
 
-    // TODO: adjust interpreted links
+    Ok(add_link_paths(results))
+}
 
-    Ok(results)
+fn add_link_paths(
+    mut results: HashMap<String, MarkdownFileInfo>,
+) -> HashMap<String, MarkdownFileInfo> {
+    // First collect all file paths for matching
+    let mut file_paths = Vec::new();
+    let mut titles = HashMap::new();
+    for (file_path, mdf_info) in &results {
+        file_paths.push(file_path.clone());
+        titles.insert(mdf_info.title.clone(), file_path.clone());
+    }
+
+    // Process each markdown file info
+    for info in results.values_mut() {
+        // Process links in each file
+        for link in &mut info.links {
+            if let Pod::Hash(link_data) = link {
+                // Only process non-external links
+                if let Some(Pod::Boolean(external)) = link_data.get("external") {
+                    if !external {
+                        if let Some(Pod::String(link_value)) = link_data.get("url") {
+                            // Find the best matching file path
+                            let link_path = find_matching_path(link_value, &file_paths, &titles);
+
+                            // Add the link_path to the link data
+                            if let Some(path) = link_path {
+                                link_data.insert("path".to_string(), Pod::String(path));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    results
+}
+
+fn find_matching_path(
+    link: &str,
+    file_paths: &[String],
+    titles: &HashMap<String, String>,
+) -> Option<String> {
+    // Clean the link - handle wiki links, anchors and query params
+    let cleaned_link = &link
+        .split('#')
+        .next()
+        .unwrap_or("") // Remove anchor
+        .split('?')
+        .next()
+        .unwrap_or("") // Remove query params
+        .trim()
+        .replace("%20", " ");
+
+    if cleaned_link.is_empty() {
+        return None;
+    }
+
+    // First try exact filename match
+    let exact_matches: Vec<&String> = file_paths
+        .iter()
+        .filter(|path| {
+            path.ends_with(cleaned_link) || path.ends_with(&format!("{}.md", cleaned_link))
+        })
+        .collect();
+
+    if !exact_matches.is_empty() {
+        // If multiple matches, prefer the one with the shortest path
+        return exact_matches
+            .into_iter()
+            .min_by_key(|path| path.len())
+            .cloned();
+    }
+
+    // Try partial match
+    let partial_matches: Vec<&String> = file_paths
+        .iter()
+        .filter(|path| path.contains(cleaned_link))
+        .collect();
+
+    if !partial_matches.is_empty() {
+        // If multiple matches, prefer the one with the shortest path
+        return partial_matches
+            .into_iter()
+            .min_by_key(|path| path.len())
+            .cloned();
+    }
+
+    // Exact title matches
+    let mut title_matches: Vec<&String> = titles
+        .iter()
+        .filter(|(title, _)| title.eq_ignore_ascii_case(cleaned_link.trim()))
+        .map(|(_, path)| path)
+        .collect();
+
+    if !title_matches.is_empty() {
+        return title_matches
+            .into_iter()
+            .min_by_key(|path| path.len())
+            .cloned();
+    }
+
+    // Dashes replaced title matches
+    title_matches = titles
+        .iter()
+        .filter(|(title, _)| title.eq_ignore_ascii_case(cleaned_link.replace("-", " ").trim()))
+        .map(|(_, path)| path)
+        .collect();
+
+    if !title_matches.is_empty() {
+        return title_matches
+            .into_iter()
+            .min_by_key(|path| path.len())
+            .cloned();
+    }
+
+    // Dashes and dots replaced title matches
+    title_matches = titles
+        .iter()
+        .filter(|(title, _)| {
+            title
+                .replace(".", "")
+                .eq_ignore_ascii_case(cleaned_link.replace("-", " ").trim())
+        })
+        .map(|(_, path)| path)
+        .collect();
+
+    if !title_matches.is_empty() {
+        return title_matches
+            .into_iter()
+            .min_by_key(|path| path.len())
+            .cloned();
+    }
+
+    None
 }
 
 fn parse_file(path: &PathBuf, matter: &Matter<YAML>) -> Result<MarkdownFileInfo, Box<dyn Error>> {
@@ -203,6 +337,7 @@ fn parse_markdown_content(
     let mut in_link = false;
     let mut current_link = String::new();
     let mut current_link_text = String::new();
+    let mut current_link_type = String::new();
     let mut link_ord = 0;
 
     let mut in_task = false;
@@ -268,6 +403,11 @@ fn parse_markdown_content(
                 {
                     in_link = true;
                     current_link.push_str(&url);
+                    current_link_type = match link_type {
+                        pulldown_cmark::LinkType::Inline => "inline".to_string(),
+                        pulldown_cmark::LinkType::WikiLink { has_pothole: _ } => "wiki".to_string(),
+                        _ => "".to_string(),
+                    };
                 }
             }
             Event::End(TagEnd::Link) => {
@@ -278,11 +418,13 @@ fn parse_markdown_content(
                     link_ord,
                     &current_link,
                     &current_link_text,
+                    &current_link_type,
                     file_data,
                 ));
 
                 current_link.clear();
                 current_link_text.clear();
+                current_link_type.clear();
             }
 
             // Tasks
@@ -356,6 +498,7 @@ fn prepare_link(
     link_ord: usize,
     current_link: &str,
     current_link_text: &str,
+    current_link_type: &str,
     file_data: &HashMap<String, Pod>,
 ) -> Pod {
     let mut link_hm = HashMap::new();
@@ -364,10 +507,16 @@ fn prepare_link(
     link_hm.insert("ord".to_string(), Pod::Integer(link_ord as i64));
     link_hm.insert(
         "text".to_string(),
-        Pod::String(current_link_text.to_owned()),
+        Pod::String(current_link_text.trim().to_owned()),
     );
-    link_hm.insert("link".to_string(), Pod::String(current_link.to_owned()));
-    // TODO: later to insert interpreted link
+    link_hm.insert(
+        "url".to_string(),
+        Pod::String(current_link.trim().to_owned()),
+    );
+    link_hm.insert(
+        "type".to_string(),
+        Pod::String(current_link_type.to_owned()),
+    );
     link_hm.insert(
         "external".to_string(),
         Pod::Boolean(
@@ -389,7 +538,10 @@ fn prepare_task(
     let mut task_hm = HashMap::new();
 
     task_hm.insert("file".to_string(), Pod::Hash(file_data.clone()));
-    task_hm.insert("text".to_string(), Pod::String(current_task.to_owned()));
+    task_hm.insert(
+        "text".to_string(),
+        Pod::String(current_task.trim().to_owned()),
+    );
     task_hm.insert("checked".to_string(), Pod::Boolean(task_checked));
 
     let mut ords: Vec<String> = task_ord.iter().map(|n| n.to_string()).collect();
