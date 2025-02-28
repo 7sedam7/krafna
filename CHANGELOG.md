@@ -1,5 +1,22 @@
 # Changelog:
 
+## [0.5.0] - 2025-02-28
+### Added
+- Added parsing of markdown file
+    - code parsed from ast instead of regex
+    - links parsed
+    - tasks parsed
+- Added corresponding functions that can be used in FROM (check README for usage)
+    - MD_LINKS
+    - MD_TASKS
+
+### Changed
+- No changes
+
+### Fixed
+- Tests checking conversion to json string when serialising Hash were not reliabse since element order is not guaranteed
+
+
 ## [0.4.1] - 2025-02-13
 ### Added
 - Added parsing of NULL
