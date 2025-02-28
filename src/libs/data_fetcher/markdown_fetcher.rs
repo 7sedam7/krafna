@@ -167,7 +167,7 @@ fn parse_file(path: &PathBuf, matter: &Matter<YAML>) -> Result<MarkdownFileInfo,
 
     // Parse the rest of markdfown for title,code, links, and tasks
     let mut mdf_info = parse_markdown_content(&markdown_content, &file_data);
-    // TODO: mdf_info.modified = file_data.get("modified").unwrap().to_string();
+    mdf_info.modified = file_data.get("modified").unwrap().to_string();
     mdf_info.frontmatter = frontmatter;
 
     Ok(mdf_info)
