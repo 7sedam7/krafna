@@ -6,7 +6,7 @@ use rayon::prelude::*;
 use krafna::libs::data_fetcher::markdown_fetcher::fetch_code_snippets;
 use krafna::libs::executor::execute_query;
 
-const NUMBER_OF_FILES: u32 = 2500;
+const NUMBER_OF_FILES: u32 = 5000;
 const PATH_TO_FILES: &str = "benches/bench";
 fn setup() -> Result<(), String> {
     let content_bytes = fs::read("benches/example.md").map_err(|_| "File should exist")?;
