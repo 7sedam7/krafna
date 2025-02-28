@@ -24,21 +24,8 @@ pub struct MarkdownFileInfo {
 }
 
 pub fn fetch_frontmatter_data(args: &[FunctionArg]) -> Result<Vec<Pod>, Box<dyn Error>> {
-    if args.len() != 1 {
-        return Err(format!(
-            "Incorret amount of arguments, 1 String expected, but {} arguments found!",
-            args.len()
-        )
-        .into());
-    }
-    let dir_path = match args.first() {
-        Some(FunctionArg::FieldValue(FieldValue::String(str))) => str,
-        _ => {
-            return Err(format!("Expected a string argument, but found {:?}", args.first()).into())
-        }
-    };
-
-    let mdf_files_info = get_markdown_files_info(dir_path)?;
+    let dir_path = validate_and_fetch_markdown_path_argument(args)?;
+    let mdf_files_info = get_markdown_files_info(&dir_path)?;
 
     Ok(mdf_files_info
         .into_values()
@@ -47,21 +34,8 @@ pub fn fetch_frontmatter_data(args: &[FunctionArg]) -> Result<Vec<Pod>, Box<dyn 
 }
 
 pub fn fetch_markdown_links(args: &[FunctionArg]) -> Result<Vec<Pod>, Box<dyn Error>> {
-    if args.len() != 1 {
-        return Err(format!(
-            "Incorret amount of arguments, 1 String expected, but {} arguments found!",
-            args.len()
-        )
-        .into());
-    }
-    let dir_path = match args.first() {
-        Some(FunctionArg::FieldValue(FieldValue::String(str))) => str,
-        _ => {
-            return Err(format!("Expected a string argument, but found {:?}", args.first()).into())
-        }
-    };
-
-    let mdf_files_info = get_markdown_files_info(dir_path)?;
+    let dir_path = validate_and_fetch_markdown_path_argument(args)?;
+    let mdf_files_info = get_markdown_files_info(&dir_path)?;
 
     Ok(mdf_files_info
         .into_values()
@@ -70,21 +44,8 @@ pub fn fetch_markdown_links(args: &[FunctionArg]) -> Result<Vec<Pod>, Box<dyn Er
 }
 
 pub fn fetch_markdown_tasks(args: &[FunctionArg]) -> Result<Vec<Pod>, Box<dyn Error>> {
-    if args.len() != 1 {
-        return Err(format!(
-            "Incorret amount of arguments, 1 String expected, but {} arguments found!",
-            args.len()
-        )
-        .into());
-    }
-    let dir_path = match args.first() {
-        Some(FunctionArg::FieldValue(FieldValue::String(str))) => str,
-        _ => {
-            return Err(format!("Expected a string argument, but found {:?}", args.first()).into())
-        }
-    };
-
-    let mdf_files_info = get_markdown_files_info(dir_path)?;
+    let dir_path = validate_and_fetch_markdown_path_argument(args)?;
+    let mdf_files_info = get_markdown_files_info(&dir_path)?;
 
     Ok(mdf_files_info
         .into_values()
@@ -92,10 +53,23 @@ pub fn fetch_markdown_tasks(args: &[FunctionArg]) -> Result<Vec<Pod>, Box<dyn Er
         .collect())
 }
 
-pub fn fetch_code_snippets(
-    dir_path: &String,
-    _lang: String,
-) -> Result<Vec<String>, Box<dyn Error>> {
+pub fn validate_and_fetch_markdown_path_argument(
+    args: &[FunctionArg],
+) -> Result<String, Box<dyn Error>> {
+    if args.len() != 1 {
+        return Err(format!(
+            "Incorret amount of arguments, 1 String expected, but {} arguments found!",
+            args.len()
+        )
+        .into());
+    }
+    match args.first() {
+        Some(FunctionArg::FieldValue(FieldValue::String(str))) => Ok(str.clone()),
+        _ => Err(format!("Expected a string argument, but found {:?}", args.first()).into()),
+    }
+}
+
+pub fn fetch_code_snippets(dir_path: &str, _lang: String) -> Result<Vec<String>, Box<dyn Error>> {
     let mdf_files_info = get_markdown_files_info(dir_path)?;
 
     Ok(mdf_files_info
@@ -105,7 +79,7 @@ pub fn fetch_code_snippets(
 }
 
 fn get_markdown_files_info(
-    dir_path: &String,
+    dir_path: &str,
 ) -> Result<HashMap<String, MarkdownFileInfo>, Box<dyn Error>> {
     let files = get_markdown_files(&shellexpand::tilde(dir_path).into_owned())?;
     // TODO: add cashing here
