@@ -3,12 +3,12 @@
 ## [0.5.0] - 2025-02-28
 ### Added
 - Added parsing of markdown file
-    - code parsed from ast instead of regex
-    - links parsed
-    - tasks parsed
+  - code parsed from ast instead of regex
+  - links parsed
+  - tasks parsed
 - Added corresponding functions that can be used in FROM (check README for usage)
-    - MD_LINKS
-    - MD_TASKS
+  - MD_LINKS
+  - MD_TASKS
 
 ### Changed
 - No changes
