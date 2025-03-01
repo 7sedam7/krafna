@@ -1,5 +1,15 @@
 # Changelog:
 
+## [0.5.6] - 2025-03-01
+### Added
+- Nothing
+
+### Changed
+- No changes
+
+### Fixed
+- Fixed issue with order by if both fields are NULL
+
 ## [0.5.5] - 2025-03-01
 ### Added
 - Nothing
