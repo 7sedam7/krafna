@@ -54,11 +54,13 @@ pub fn execute_query(
                 query.select_fields.splice(0..0, select_fields);
             }
             Err(error) => {
-                return Err(format!(
-                    "Error parsing SELECT: {}, Query: \"{}\"",
-                    error, peekable_select_query
-                )
-                .into())
+                if query.select_fields.is_empty() {
+                    return Err(format!(
+                        "Error parsing SELECT: {}, Query: \"{}\"",
+                        error, peekable_select_query
+                    )
+                    .into());
+                }
             }
         }
     }

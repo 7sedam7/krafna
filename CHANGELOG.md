@@ -1,6 +1,16 @@
 # Changelog:
 
-## [0.5.0] - 2025-02-28
+## [0.5.2] - 2025-03-01
+### Added
+- Nothing
+
+### Changed
+- No changes
+
+### Fixed
+- If --include-fields is "", don't throw an error if query's SELECT had some fields.
+
+## [0.5.1] - 2025-02-28
 ### Added
 - Added parsing of markdown file
   - code parsed from ast instead of regex
