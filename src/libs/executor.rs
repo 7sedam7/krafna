@@ -119,6 +119,10 @@ fn execute_order_by(fields: &Vec<OrderByFieldOption>, data: &mut [Pod]) -> Resul
             let fv_a = get_field_value(&orderby_field.field_name, a);
             let fv_b = get_field_value(&orderby_field.field_name, b);
 
+            if matches!(fv_a, FieldValue::Null) && matches!(fv_b, FieldValue::Null) {
+                continue;
+            }
+
             let comparison: std::cmp::Ordering = if matches!(fv_a, FieldValue::Null) {
                 std::cmp::Ordering::Less
             } else if matches!(fv_b, FieldValue::Null) {
