@@ -204,7 +204,7 @@ Use with the [Perec](https://github.com/7sedam7/perec) Neovim plugin for seamles
 - [ ] Implement pruning of AND and OR operators (mostly for better error messages, performance there is more than good enough)
 - [ ] TODOs
 - [x] Add tests for execution
-- [ ] add suport for functions in SELECT
+- [ ] add support for functions in SELECT
 - [ ] add functions
 - [ ]  * think about which functions to add
 - [x]  * DATE("some-date", <format>) -> new type date
