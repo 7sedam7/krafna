@@ -361,7 +361,7 @@ fn parse_file(path: &PathBuf, matter: &Matter<YAML>) -> Result<MarkdownFileInfo,
     let content = fs::read_to_string(path)?;
 
     // Extract frontmatter
-    let result = matter.parse(&content);
+    let result = matter.parse(&content)?;
     let mut frontmatter = result
         .data
         .as_ref()

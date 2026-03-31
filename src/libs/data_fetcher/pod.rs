@@ -60,12 +60,13 @@ impl Pod {
         }
     }
 
-    pub fn to_untagged_json_string(&self) -> Result<String, serde_json::Error> {
+    pub fn to_untagged_json_string(&self) -> Result<String, Box<dyn std::error::Error>> {
         serde_json::to_string(
             &self
                 .to_gray_matter_pod()
                 .deserialize::<serde_json::Value>()?,
         )
+        .map_err(|e| e.into())
     }
 
     // TODO: Figure out how to better deal with untagged so i don't have to do this crazy
